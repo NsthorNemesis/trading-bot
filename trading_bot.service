@@ -1,0 +1,35 @@
+[Unit]
+Description=Trading Bot v11 — DeepSeek + OANDA Forex
+Documentation=https://github.com/trading-bot-v11
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/trading_bot_v11
+
+# Cargar variables de entorno desde .env
+EnvironmentFile=/root/trading_bot_v11/.env
+
+# Comando de arranque — paper trading por defecto (seguro)
+# Para live trading: cambiar a: ... main.py --live
+ExecStart=/root/trading_bot_v11/venv/bin/python main.py
+
+# Reinicio automático si el bot se cae
+Restart=on-failure
+RestartSec=30s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Logs al archivo del bot (además de journald)
+StandardOutput=append:/root/trading_bot_v11/logs/trading_bot.log
+StandardError=append:/root/trading_bot_v11/logs/trading_bot_error.log
+
+# Límites del proceso
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

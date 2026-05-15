@@ -1,0 +1,585 @@
+{
+  "config": {
+    "version": "Plan A M15",
+    "capital_ini": 200.0,
+    "n_semanas": 52,
+    "sim_start": "2025-05-09",
+    "estrategias": [
+      "EMA_Crossover",
+      "RSI_Bollinger",
+      "RSI_Divergence"
+    ],
+    "min_confidence": 0.4,
+    "rr_ratio": 2.0,
+    "timeframe_senales": "M15",
+    "timeframe_fills": "M15",
+    "cambios": [
+      "M15 señales",
+      "H4 filtro EMA",
+      "RSI_Div real",
+      "EMA_Crossover"
+    ]
+  },
+  "resumen": {
+    "capital_final": 280.43,
+    "pnl_total": 80.43,
+    "pnl_pct": 40.22,
+    "total_trades": 1705,
+    "win_rate_global": 0.345,
+    "max_drawdown_pct": 64.34,
+    "semanas_positivas": 25
+  },
+  "comparativa": {
+    "v11_m15": {
+      "capital_final": 173.34,
+      "pnl_pct": -13.33,
+      "wr": 0.33,
+      "trades": 594
+    },
+    "planA_h1": {
+      "capital_final": 36.27,
+      "pnl_pct": -81.87,
+      "wr": 0.28,
+      "trades": 644
+    }
+  },
+  "por_estrategia": {
+    "RSI_Bollinger": {
+      "trades": 734,
+      "win_rate": 0.387,
+      "pnl": 509.6
+    },
+    "RSI_Divergence": {
+      "trades": 280,
+      "win_rate": 0.293,
+      "pnl": -165.74
+    },
+    "EMA_Crossover": {
+      "trades": 691,
+      "win_rate": 0.323,
+      "pnl": -263.42
+    }
+  },
+  "semanas": [
+    {
+      "semana": 1,
+      "inicio": "2025-05-09",
+      "trades": 33,
+      "ganadas": 11,
+      "win_rate": 0.333,
+      "profit_factor": 0.949,
+      "pnl_total": -3.3006,
+      "capital_fin": 196.7
+    },
+    {
+      "semana": 2,
+      "inicio": "2025-05-16",
+      "trades": 35,
+      "ganadas": 17,
+      "win_rate": 0.486,
+      "profit_factor": 1.852,
+      "pnl_total": 48.1272,
+      "capital_fin": 244.83
+    },
+    {
+      "semana": 3,
+      "inicio": "2025-05-23",
+      "trades": 28,
+      "ganadas": 3,
+      "win_rate": 0.107,
+      "profit_factor": 0.246,
+      "pnl_total": -61.4124,
+      "capital_fin": 183.41
+    },
+    {
+      "semana": 4,
+      "inicio": "2025-05-30",
+      "trades": 24,
+      "ganadas": 7,
+      "win_rate": 0.292,
+      "profit_factor": 0.759,
+      "pnl_total": -10.3188,
+      "capital_fin": 173.1
+    },
+    {
+      "semana": 5,
+      "inicio": "2025-06-06",
+      "trades": 39,
+      "ganadas": 13,
+      "win_rate": 0.333,
+      "profit_factor": 0.962,
+      "pnl_total": -2.3826,
+      "capital_fin": 170.71
+    },
+    {
+      "semana": 6,
+      "inicio": "2025-06-13",
+      "trades": 47,
+      "ganadas": 20,
+      "win_rate": 0.426,
+      "profit_factor": 1.418,
+      "pnl_total": 32.9778,
+      "capital_fin": 203.69
+    },
+    {
+      "semana": 7,
+      "inicio": "2025-06-20",
+      "trades": 31,
+      "ganadas": 17,
+      "win_rate": 0.548,
+      "profit_factor": 2.314,
+      "pnl_total": 65.8569,
+      "capital_fin": 269.55
+    },
+    {
+      "semana": 8,
+      "inicio": "2025-06-27",
+      "trades": 35,
+      "ganadas": 14,
+      "win_rate": 0.4,
+      "profit_factor": 1.305,
+      "pnl_total": 26.3693,
+      "capital_fin": 295.92
+    },
+    {
+      "semana": 9,
+      "inicio": "2025-07-04",
+      "trades": 33,
+      "ganadas": 14,
+      "win_rate": 0.424,
+      "profit_factor": 1.434,
+      "pnl_total": 38.8942,
+      "capital_fin": 334.81
+    },
+    {
+      "semana": 10,
+      "inicio": "2025-07-11",
+      "trades": 33,
+      "ganadas": 14,
+      "win_rate": 0.424,
+      "profit_factor": 1.45,
+      "pnl_total": 46.1692,
+      "capital_fin": 380.98
+    },
+    {
+      "semana": 11,
+      "inicio": "2025-07-18",
+      "trades": 33,
+      "ganadas": 11,
+      "win_rate": 0.333,
+      "profit_factor": 0.94,
+      "pnl_total": -7.3081,
+      "capital_fin": 373.67
+    },
+    {
+      "semana": 12,
+      "inicio": "2025-07-25",
+      "trades": 27,
+      "ganadas": 9,
+      "win_rate": 0.333,
+      "profit_factor": 0.939,
+      "pnl_total": -5.5407,
+      "capital_fin": 368.13
+    },
+    {
+      "semana": 13,
+      "inicio": "2025-08-01",
+      "trades": 31,
+      "ganadas": 13,
+      "win_rate": 0.419,
+      "profit_factor": 1.398,
+      "pnl_total": 43.4045,
+      "capital_fin": 411.54
+    },
+    {
+      "semana": 14,
+      "inicio": "2025-08-08",
+      "trades": 29,
+      "ganadas": 10,
+      "win_rate": 0.345,
+      "profit_factor": 1.029,
+      "pnl_total": 3.4668,
+      "capital_fin": 415.0
+    },
+    {
+      "semana": 15,
+      "inicio": "2025-08-15",
+      "trades": 34,
+      "ganadas": 8,
+      "win_rate": 0.235,
+      "profit_factor": 0.601,
+      "pnl_total": -61.0467,
+      "capital_fin": 353.96
+    },
+    {
+      "semana": 16,
+      "inicio": "2025-08-22",
+      "trades": 24,
+      "ganadas": 11,
+      "win_rate": 0.458,
+      "profit_factor": 1.644,
+      "pnl_total": 46.67,
+      "capital_fin": 400.63
+    },
+    {
+      "semana": 17,
+      "inicio": "2025-08-29",
+      "trades": 27,
+      "ganadas": 8,
+      "win_rate": 0.296,
+      "profit_factor": 0.798,
+      "pnl_total": -21.5487,
+      "capital_fin": 379.08
+    },
+    {
+      "semana": 18,
+      "inicio": "2025-09-05",
+      "trades": 27,
+      "ganadas": 3,
+      "win_rate": 0.111,
+      "profit_factor": 0.25,
+      "pnl_total": -92.7538,
+      "capital_fin": 286.32
+    },
+    {
+      "semana": 19,
+      "inicio": "2025-09-12",
+      "trades": 27,
+      "ganadas": 10,
+      "win_rate": 0.37,
+      "profit_factor": 1.123,
+      "pnl_total": 9.6881,
+      "capital_fin": 296.01
+    },
+    {
+      "semana": 20,
+      "inicio": "2025-09-19",
+      "trades": 30,
+      "ganadas": 10,
+      "win_rate": 0.333,
+      "profit_factor": 0.965,
+      "pnl_total": -2.9569,
+      "capital_fin": 293.05
+    },
+    {
+      "semana": 21,
+      "inicio": "2025-09-26",
+      "trades": 36,
+      "ganadas": 15,
+      "win_rate": 0.417,
+      "profit_factor": 1.382,
+      "pnl_total": 37.0952,
+      "capital_fin": 330.15
+    },
+    {
+      "semana": 22,
+      "inicio": "2025-10-03",
+      "trades": 27,
+      "ganadas": 7,
+      "win_rate": 0.259,
+      "profit_factor": 0.687,
+      "pnl_total": -29.6402,
+      "capital_fin": 300.51
+    },
+    {
+      "semana": 23,
+      "inicio": "2025-10-10",
+      "trades": 30,
+      "ganadas": 7,
+      "win_rate": 0.233,
+      "profit_factor": 0.589,
+      "pnl_total": -39.7433,
+      "capital_fin": 260.77
+    },
+    {
+      "semana": 24,
+      "inicio": "2025-10-17",
+      "trades": 32,
+      "ganadas": 12,
+      "win_rate": 0.375,
+      "profit_factor": 1.149,
+      "pnl_total": 12.7864,
+      "capital_fin": 273.55
+    },
+    {
+      "semana": 25,
+      "inicio": "2025-10-24",
+      "trades": 32,
+      "ganadas": 13,
+      "win_rate": 0.406,
+      "profit_factor": 1.292,
+      "pnl_total": 26.1775,
+      "capital_fin": 299.73
+    },
+    {
+      "semana": 26,
+      "inicio": "2025-10-31",
+      "trades": 26,
+      "ganadas": 7,
+      "win_rate": 0.269,
+      "profit_factor": 0.725,
+      "pnl_total": -22.9057,
+      "capital_fin": 276.82
+    },
+    {
+      "semana": 27,
+      "inicio": "2025-11-07",
+      "trades": 38,
+      "ganadas": 13,
+      "win_rate": 0.342,
+      "profit_factor": 1.02,
+      "pnl_total": 2.101,
+      "capital_fin": 278.93
+    },
+    {
+      "semana": 28,
+      "inicio": "2025-11-14",
+      "trades": 39,
+      "ganadas": 13,
+      "win_rate": 0.333,
+      "profit_factor": 0.96,
+      "pnl_total": -3.9285,
+      "capital_fin": 275.0
+    },
+    {
+      "semana": 29,
+      "inicio": "2025-11-21",
+      "trades": 38,
+      "ganadas": 13,
+      "win_rate": 0.342,
+      "profit_factor": 1.023,
+      "pnl_total": 2.4156,
+      "capital_fin": 277.41
+    },
+    {
+      "semana": 30,
+      "inicio": "2025-11-28",
+      "trades": 38,
+      "ganadas": 18,
+      "win_rate": 0.474,
+      "profit_factor": 1.725,
+      "pnl_total": 69.382,
+      "capital_fin": 346.79
+    },
+    {
+      "semana": 31,
+      "inicio": "2025-12-05",
+      "trades": 34,
+      "ganadas": 11,
+      "win_rate": 0.324,
+      "profit_factor": 0.943,
+      "pnl_total": -7.1433,
+      "capital_fin": 339.65
+    },
+    {
+      "semana": 32,
+      "inicio": "2025-12-12",
+      "trades": 29,
+      "ganadas": 17,
+      "win_rate": 0.586,
+      "profit_factor": 2.69,
+      "pnl_total": 124.1867,
+      "capital_fin": 463.84
+    },
+    {
+      "semana": 33,
+      "inicio": "2025-12-19",
+      "trades": 21,
+      "ganadas": 4,
+      "win_rate": 0.19,
+      "profit_factor": 0.479,
+      "pnl_total": -60.5649,
+      "capital_fin": 403.27
+    },
+    {
+      "semana": 34,
+      "inicio": "2025-12-26",
+      "trades": 35,
+      "ganadas": 7,
+      "win_rate": 0.2,
+      "profit_factor": 0.482,
+      "pnl_total": -80.4545,
+      "capital_fin": 322.82
+    },
+    {
+      "semana": 35,
+      "inicio": "2026-01-02",
+      "trades": 38,
+      "ganadas": 12,
+      "win_rate": 0.316,
+      "profit_factor": 0.89,
+      "pnl_total": -13.6104,
+      "capital_fin": 309.21
+    },
+    {
+      "semana": 36,
+      "inicio": "2026-01-09",
+      "trades": 30,
+      "ganadas": 13,
+      "win_rate": 0.433,
+      "profit_factor": 1.49,
+      "pnl_total": 40.6199,
+      "capital_fin": 349.83
+    },
+    {
+      "semana": 37,
+      "inicio": "2026-01-16",
+      "trades": 30,
+      "ganadas": 12,
+      "win_rate": 0.4,
+      "profit_factor": 1.298,
+      "pnl_total": 29.5489,
+      "capital_fin": 379.38
+    },
+    {
+      "semana": 38,
+      "inicio": "2026-01-23",
+      "trades": 25,
+      "ganadas": 16,
+      "win_rate": 0.64,
+      "profit_factor": 3.197,
+      "pnl_total": 147.407,
+      "capital_fin": 526.78
+    },
+    {
+      "semana": 39,
+      "inicio": "2026-01-30",
+      "trades": 30,
+      "ganadas": 9,
+      "win_rate": 0.3,
+      "profit_factor": 0.833,
+      "pnl_total": -29.8177,
+      "capital_fin": 496.97
+    },
+    {
+      "semana": 40,
+      "inicio": "2026-02-06",
+      "trades": 29,
+      "ganadas": 14,
+      "win_rate": 0.483,
+      "profit_factor": 1.838,
+      "pnl_total": 99.6365,
+      "capital_fin": 596.6
+    },
+    {
+      "semana": 41,
+      "inicio": "2026-02-13",
+      "trades": 47,
+      "ganadas": 14,
+      "win_rate": 0.298,
+      "profit_factor": 0.832,
+      "pnl_total": -49.585,
+      "capital_fin": 547.02
+    },
+    {
+      "semana": 42,
+      "inicio": "2026-02-20",
+      "trades": 35,
+      "ganadas": 13,
+      "win_rate": 0.371,
+      "profit_factor": 1.155,
+      "pnl_total": 28.3851,
+      "capital_fin": 575.4
+    },
+    {
+      "semana": 43,
+      "inicio": "2026-02-27",
+      "trades": 35,
+      "ganadas": 14,
+      "win_rate": 0.4,
+      "profit_factor": 1.33,
+      "pnl_total": 57.2941,
+      "capital_fin": 632.7
+    },
+    {
+      "semana": 44,
+      "inicio": "2026-03-06",
+      "trades": 40,
+      "ganadas": 12,
+      "win_rate": 0.3,
+      "profit_factor": 0.846,
+      "pnl_total": -44.525,
+      "capital_fin": 588.17
+    },
+    {
+      "semana": 45,
+      "inicio": "2026-03-13",
+      "trades": 44,
+      "ganadas": 10,
+      "win_rate": 0.227,
+      "profit_factor": 0.604,
+      "pnl_total": -116.0887,
+      "capital_fin": 472.08
+    },
+    {
+      "semana": 46,
+      "inicio": "2026-03-20",
+      "trades": 45,
+      "ganadas": 13,
+      "win_rate": 0.289,
+      "profit_factor": 0.773,
+      "pnl_total": -47.1647,
+      "capital_fin": 424.92
+    },
+    {
+      "semana": 47,
+      "inicio": "2026-03-27",
+      "trades": 34,
+      "ganadas": 13,
+      "win_rate": 0.382,
+      "profit_factor": 1.21,
+      "pnl_total": 28.2061,
+      "capital_fin": 453.12
+    },
+    {
+      "semana": 48,
+      "inicio": "2026-04-03",
+      "trades": 45,
+      "ganadas": 11,
+      "win_rate": 0.244,
+      "profit_factor": 0.634,
+      "pnl_total": -76.9473,
+      "capital_fin": 376.18
+    },
+    {
+      "semana": 49,
+      "inicio": "2026-04-10",
+      "trades": 34,
+      "ganadas": 14,
+      "win_rate": 0.412,
+      "profit_factor": 1.329,
+      "pnl_total": 41.7944,
+      "capital_fin": 417.97
+    },
+    {
+      "semana": 50,
+      "inicio": "2026-04-17",
+      "trades": 28,
+      "ganadas": 6,
+      "win_rate": 0.214,
+      "profit_factor": 0.532,
+      "pnl_total": -63.2778,
+      "capital_fin": 354.69
+    },
+    {
+      "semana": 51,
+      "inicio": "2026-04-24",
+      "trades": 27,
+      "ganadas": 9,
+      "win_rate": 0.333,
+      "profit_factor": 0.98,
+      "pnl_total": -1.8753,
+      "capital_fin": 352.82
+    },
+    {
+      "semana": 52,
+      "inicio": "2026-05-01",
+      "trades": 27,
+      "ganadas": 4,
+      "win_rate": 0.148,
+      "profit_factor": 0.333,
+      "pnl_total": -72.384,
+      "capital_fin": 280.43
+    }
+  ]
+}

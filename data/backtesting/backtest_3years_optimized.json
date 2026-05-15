@@ -1,0 +1,2664 @@
+{
+  "config": {
+    "capital_ini": 200.0,
+    "n_semanas": 156,
+    "sim_start": "2023-05-08",
+    "sim_end": "2026-05-04",
+    "estrategias_activas": [
+      "RSI_Bollinger",
+      "RSI_Divergence"
+    ],
+    "min_confidence": 0.4,
+    "rr_ratio": 2.0,
+    "sl_atr_mult": 1.5,
+    "riesgo_pct": 0.015,
+    "max_posiciones": 3,
+    "circuit_breaker_pct": 0.15,
+    "aporte_mensual": 200.0
+  },
+  "resumen": {
+    "capital_final": 19156.25,
+    "total_invertido": 7400.0,
+    "ganancia_neta": 11756.25,
+    "roi_total_pct": 158.87,
+    "pnl_sin_aportes": 11756.25,
+    "total_trades": 1890,
+    "win_rate_global": 0.359,
+    "max_drawdown_pct": 113.15,
+    "semanas_positivas": 50,
+    "semanas_totales": 156,
+    "circuit_breaker_fires": 86,
+    "aportes_realizados": 36
+  },
+  "por_estrategia": {
+    "RSI_Bollinger": {
+      "trades": 1890,
+      "win_rate": 0.359,
+      "pnl": 11756.25
+    }
+  },
+  "circuit_breaker_log": [
+    {
+      "ts": "2023-06-14T18:15:00+00:00",
+      "dd_pct": 15.52,
+      "peak": 740.41,
+      "capital": 625.49,
+      "hasta": "2023-06-21T18:15:00+00:00"
+    },
+    {
+      "ts": "2023-06-21T18:15:00+00:00",
+      "dd_pct": 15.52,
+      "peak": 740.41,
+      "capital": 625.49,
+      "hasta": "2023-06-28T18:15:00+00:00"
+    },
+    {
+      "ts": "2023-06-28T18:15:00+00:00",
+      "dd_pct": 15.52,
+      "peak": 740.41,
+      "capital": 625.49,
+      "hasta": "2023-07-05T18:15:00+00:00"
+    },
+    {
+      "ts": "2023-07-05T18:15:00+00:00",
+      "dd_pct": 15.52,
+      "peak": 740.41,
+      "capital": 625.49,
+      "hasta": "2023-07-12T18:15:00+00:00"
+    },
+    {
+      "ts": "2023-07-27T19:45:00+00:00",
+      "dd_pct": 16.1,
+      "peak": 850.26,
+      "capital": 713.34,
+      "hasta": "2023-08-03T19:45:00+00:00"
+    },
+    {
+      "ts": "2023-08-04T08:00:00+00:00",
+      "dd_pct": 16.1,
+      "peak": 850.26,
+      "capital": 713.35,
+      "hasta": "2023-08-11T08:00:00+00:00"
+    },
+    {
+      "ts": "2023-08-11T08:00:00+00:00",
+      "dd_pct": 18.07,
+      "peak": 843.99,
+      "capital": 691.45,
+      "hasta": "2023-08-18T08:00:00+00:00"
+    },
+    {
+      "ts": "2023-08-30T13:30:00+00:00",
+      "dd_pct": 15.46,
+      "peak": 1067.73,
+      "capital": 902.65,
+      "hasta": "2023-09-06T13:30:00+00:00"
+    },
+    {
+      "ts": "2023-09-06T13:30:00+00:00",
+      "dd_pct": 15.46,
+      "peak": 1067.73,
+      "capital": 902.65,
+      "hasta": "2023-09-13T13:30:00+00:00"
+    },
+    {
+      "ts": "2023-09-27T07:00:00+00:00",
+      "dd_pct": 15.3,
+      "peak": 1185.78,
+      "capital": 1004.31,
+      "hasta": "2023-10-04T07:00:00+00:00"
+    },
+    {
+      "ts": "2023-10-04T07:00:00+00:00",
+      "dd_pct": 15.3,
+      "peak": 1185.78,
+      "capital": 1004.31,
+      "hasta": "2023-10-11T07:00:00+00:00"
+    },
+    {
+      "ts": "2023-11-16T09:15:00+00:00",
+      "dd_pct": 15.55,
+      "peak": 2642.02,
+      "capital": 2231.11,
+      "hasta": "2023-11-23T09:15:00+00:00"
+    },
+    {
+      "ts": "2023-11-23T09:15:00+00:00",
+      "dd_pct": 18.12,
+      "peak": 2642.02,
+      "capital": 2163.16,
+      "hasta": "2023-11-30T09:15:00+00:00"
+    },
+    {
+      "ts": "2023-11-30T09:15:00+00:00",
+      "dd_pct": 18.12,
+      "peak": 2642.02,
+      "capital": 2163.16,
+      "hasta": "2023-12-07T09:15:00+00:00"
+    },
+    {
+      "ts": "2023-12-07T09:15:00+00:00",
+      "dd_pct": 18.12,
+      "peak": 2642.02,
+      "capital": 2163.16,
+      "hasta": "2023-12-14T09:15:00+00:00"
+    },
+    {
+      "ts": "2024-01-05T09:45:00+00:00",
+      "dd_pct": 16.2,
+      "peak": 2883.78,
+      "capital": 2416.5,
+      "hasta": "2024-01-12T09:45:00+00:00"
+    },
+    {
+      "ts": "2024-01-12T09:45:00+00:00",
+      "dd_pct": 16.2,
+      "peak": 2883.78,
+      "capital": 2416.5,
+      "hasta": "2024-01-19T09:45:00+00:00"
+    },
+    {
+      "ts": "2024-01-25T13:15:00+00:00",
+      "dd_pct": 16.05,
+      "peak": 2828.83,
+      "capital": 2374.84,
+      "hasta": "2024-02-01T13:15:00+00:00"
+    },
+    {
+      "ts": "2024-02-02T15:15:00+00:00",
+      "dd_pct": 16.19,
+      "peak": 2694.99,
+      "capital": 2258.55,
+      "hasta": "2024-02-09T15:15:00+00:00"
+    },
+    {
+      "ts": "2024-02-09T15:15:00+00:00",
+      "dd_pct": 16.19,
+      "peak": 2694.99,
+      "capital": 2258.55,
+      "hasta": "2024-02-16T15:15:00+00:00"
+    },
+    {
+      "ts": "2024-02-20T10:00:00+00:00",
+      "dd_pct": 15.36,
+      "peak": 2649.15,
+      "capital": 2242.26,
+      "hasta": "2024-02-27T10:00:00+00:00"
+    },
+    {
+      "ts": "2024-03-07T16:15:00+00:00",
+      "dd_pct": 15.63,
+      "peak": 2943.96,
+      "capital": 2483.86,
+      "hasta": "2024-03-14T16:15:00+00:00"
+    },
+    {
+      "ts": "2024-03-15T13:30:00+00:00",
+      "dd_pct": 15.46,
+      "peak": 2943.96,
+      "capital": 2488.96,
+      "hasta": "2024-03-22T13:30:00+00:00"
+    },
+    {
+      "ts": "2024-03-22T13:30:00+00:00",
+      "dd_pct": 15.46,
+      "peak": 2943.96,
+      "capital": 2488.96,
+      "hasta": "2024-03-29T13:30:00+00:00"
+    },
+    {
+      "ts": "2024-03-29T13:30:00+00:00",
+      "dd_pct": 15.46,
+      "peak": 2943.96,
+      "capital": 2488.96,
+      "hasta": "2024-04-05T13:30:00+00:00"
+    },
+    {
+      "ts": "2024-05-30T14:00:00+00:00",
+      "dd_pct": 15.55,
+      "peak": 4968.5,
+      "capital": 4195.92,
+      "hasta": "2024-06-06T14:00:00+00:00"
+    },
+    {
+      "ts": "2024-06-06T14:00:00+00:00",
+      "dd_pct": 16.86,
+      "peak": 4968.5,
+      "capital": 4131.0,
+      "hasta": "2024-06-13T14:00:00+00:00"
+    },
+    {
+      "ts": "2024-06-13T16:00:00+00:00",
+      "dd_pct": 15.45,
+      "peak": 4968.5,
+      "capital": 4201.07,
+      "hasta": "2024-06-20T16:00:00+00:00"
+    },
+    {
+      "ts": "2024-06-20T16:00:00+00:00",
+      "dd_pct": 16.75,
+      "peak": 4968.5,
+      "capital": 4136.11,
+      "hasta": "2024-06-27T16:00:00+00:00"
+    },
+    {
+      "ts": "2024-07-01T13:00:00+00:00",
+      "dd_pct": 15.51,
+      "peak": 4266.04,
+      "capital": 3604.43,
+      "hasta": "2024-07-08T13:00:00+00:00"
+    },
+    {
+      "ts": "2024-07-23T09:45:00+00:00",
+      "dd_pct": 15.46,
+      "peak": 6191.32,
+      "capital": 5234.14,
+      "hasta": "2024-07-30T09:45:00+00:00"
+    },
+    {
+      "ts": "2024-07-30T13:00:00+00:00",
+      "dd_pct": 15.5,
+      "peak": 6191.32,
+      "capital": 5231.75,
+      "hasta": "2024-08-06T13:00:00+00:00"
+    },
+    {
+      "ts": "2024-08-08T13:30:00+00:00",
+      "dd_pct": 15.68,
+      "peak": 6191.32,
+      "capital": 5220.56,
+      "hasta": "2024-08-15T13:30:00+00:00"
+    },
+    {
+      "ts": "2024-08-20T09:30:00+00:00",
+      "dd_pct": 16.28,
+      "peak": 5555.36,
+      "capital": 4651.17,
+      "hasta": "2024-08-27T09:30:00+00:00"
+    },
+    {
+      "ts": "2024-08-27T09:30:00+00:00",
+      "dd_pct": 17.57,
+      "peak": 5555.36,
+      "capital": 4579.21,
+      "hasta": "2024-09-03T09:30:00+00:00"
+    },
+    {
+      "ts": "2024-09-03T09:30:00+00:00",
+      "dd_pct": 17.57,
+      "peak": 5555.36,
+      "capital": 4579.21,
+      "hasta": "2024-09-10T09:30:00+00:00"
+    },
+    {
+      "ts": "2024-09-25T07:00:00+00:00",
+      "dd_pct": 16.82,
+      "peak": 6414.97,
+      "capital": 5335.83,
+      "hasta": "2024-10-02T07:00:00+00:00"
+    },
+    {
+      "ts": "2024-10-02T07:00:00+00:00",
+      "dd_pct": 16.82,
+      "peak": 6414.97,
+      "capital": 5335.83,
+      "hasta": "2024-10-09T07:00:00+00:00"
+    },
+    {
+      "ts": "2024-10-09T07:00:00+00:00",
+      "dd_pct": 16.82,
+      "peak": 6414.97,
+      "capital": 5335.83,
+      "hasta": "2024-10-16T07:00:00+00:00"
+    },
+    {
+      "ts": "2024-10-16T19:45:00+00:00",
+      "dd_pct": 16.27,
+      "peak": 6414.97,
+      "capital": 5371.01,
+      "hasta": "2024-10-23T19:45:00+00:00"
+    },
+    {
+      "ts": "2024-10-31T15:00:00+00:00",
+      "dd_pct": 15.57,
+      "peak": 6135.9,
+      "capital": 5180.38,
+      "hasta": "2024-11-07T15:00:00+00:00"
+    },
+    {
+      "ts": "2024-11-12T07:00:00+00:00",
+      "dd_pct": 15.26,
+      "peak": 6135.9,
+      "capital": 5199.87,
+      "hasta": "2024-11-19T07:00:00+00:00"
+    },
+    {
+      "ts": "2024-11-19T07:00:00+00:00",
+      "dd_pct": 15.26,
+      "peak": 6135.9,
+      "capital": 5199.87,
+      "hasta": "2024-11-26T07:00:00+00:00"
+    },
+    {
+      "ts": "2024-12-11T09:45:00+00:00",
+      "dd_pct": 15.53,
+      "peak": 7482.65,
+      "capital": 6320.39,
+      "hasta": "2024-12-18T09:45:00+00:00"
+    },
+    {
+      "ts": "2024-12-18T19:00:00+00:00",
+      "dd_pct": 15.73,
+      "peak": 7482.65,
+      "capital": 6305.6,
+      "hasta": "2024-12-25T19:00:00+00:00"
+    },
+    {
+      "ts": "2024-12-26T07:00:00+00:00",
+      "dd_pct": 18.32,
+      "peak": 7482.65,
+      "capital": 6112.16,
+      "hasta": "2025-01-02T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-01-02T07:00:00+00:00",
+      "dd_pct": 18.32,
+      "peak": 7482.65,
+      "capital": 6112.16,
+      "hasta": "2025-01-09T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-01-23T13:15:00+00:00",
+      "dd_pct": 15.96,
+      "peak": 7314.39,
+      "capital": 6146.92,
+      "hasta": "2025-01-30T13:15:00+00:00"
+    },
+    {
+      "ts": "2025-02-04T15:15:00+00:00",
+      "dd_pct": 15.51,
+      "peak": 7434.17,
+      "capital": 6280.91,
+      "hasta": "2025-02-11T15:15:00+00:00"
+    },
+    {
+      "ts": "2025-02-12T07:00:00+00:00",
+      "dd_pct": 15.4,
+      "peak": 7434.17,
+      "capital": 6289.44,
+      "hasta": "2025-02-19T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-02-19T07:00:00+00:00",
+      "dd_pct": 15.4,
+      "peak": 7434.17,
+      "capital": 6289.44,
+      "hasta": "2025-02-26T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-02-26T07:00:00+00:00",
+      "dd_pct": 15.4,
+      "peak": 7434.17,
+      "capital": 6289.44,
+      "hasta": "2025-03-05T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-03-18T08:00:00+00:00",
+      "dd_pct": 15.58,
+      "peak": 9660.77,
+      "capital": 8155.6,
+      "hasta": "2025-03-25T08:00:00+00:00"
+    },
+    {
+      "ts": "2025-03-25T08:00:00+00:00",
+      "dd_pct": 15.58,
+      "peak": 9660.77,
+      "capital": 8155.6,
+      "hasta": "2025-04-01T08:00:00+00:00"
+    },
+    {
+      "ts": "2025-04-01T08:00:00+00:00",
+      "dd_pct": 15.58,
+      "peak": 9660.77,
+      "capital": 8155.6,
+      "hasta": "2025-04-08T08:00:00+00:00"
+    },
+    {
+      "ts": "2025-04-08T08:00:00+00:00",
+      "dd_pct": 15.58,
+      "peak": 9660.77,
+      "capital": 8155.6,
+      "hasta": "2025-04-15T08:00:00+00:00"
+    },
+    {
+      "ts": "2025-05-14T08:15:00+00:00",
+      "dd_pct": 15.5,
+      "peak": 12294.77,
+      "capital": 10388.57,
+      "hasta": "2025-05-21T08:15:00+00:00"
+    },
+    {
+      "ts": "2025-05-21T08:15:00+00:00",
+      "dd_pct": 15.5,
+      "peak": 12294.77,
+      "capital": 10388.57,
+      "hasta": "2025-05-28T08:15:00+00:00"
+    },
+    {
+      "ts": "2025-05-28T08:15:00+00:00",
+      "dd_pct": 15.5,
+      "peak": 12294.77,
+      "capital": 10388.57,
+      "hasta": "2025-06-04T08:15:00+00:00"
+    },
+    {
+      "ts": "2025-06-04T08:15:00+00:00",
+      "dd_pct": 15.5,
+      "peak": 12294.77,
+      "capital": 10388.57,
+      "hasta": "2025-06-11T08:15:00+00:00"
+    },
+    {
+      "ts": "2025-07-01T16:00:00+00:00",
+      "dd_pct": 16.1,
+      "peak": 14735.15,
+      "capital": 12362.11,
+      "hasta": "2025-07-08T16:00:00+00:00"
+    },
+    {
+      "ts": "2025-07-16T13:30:00+00:00",
+      "dd_pct": 15.29,
+      "peak": 15123.85,
+      "capital": 12811.84,
+      "hasta": "2025-07-23T13:30:00+00:00"
+    },
+    {
+      "ts": "2025-07-23T13:30:00+00:00",
+      "dd_pct": 16.6,
+      "peak": 15123.85,
+      "capital": 12613.43,
+      "hasta": "2025-07-30T13:30:00+00:00"
+    },
+    {
+      "ts": "2025-07-30T13:30:00+00:00",
+      "dd_pct": 16.6,
+      "peak": 15123.85,
+      "capital": 12613.43,
+      "hasta": "2025-08-06T13:30:00+00:00"
+    },
+    {
+      "ts": "2025-08-06T13:30:00+00:00",
+      "dd_pct": 16.6,
+      "peak": 15123.85,
+      "capital": 12613.43,
+      "hasta": "2025-08-13T13:30:00+00:00"
+    },
+    {
+      "ts": "2025-08-20T07:00:00+00:00",
+      "dd_pct": 18.29,
+      "peak": 12621.23,
+      "capital": 10312.73,
+      "hasta": "2025-08-27T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-08-27T07:00:00+00:00",
+      "dd_pct": 18.29,
+      "peak": 12621.23,
+      "capital": 10312.73,
+      "hasta": "2025-09-03T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-09-03T07:00:00+00:00",
+      "dd_pct": 18.29,
+      "peak": 12621.23,
+      "capital": 10312.73,
+      "hasta": "2025-09-10T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-09-10T07:00:00+00:00",
+      "dd_pct": 18.29,
+      "peak": 12621.23,
+      "capital": 10312.73,
+      "hasta": "2025-09-17T07:00:00+00:00"
+    },
+    {
+      "ts": "2025-11-04T09:15:00+00:00",
+      "dd_pct": 15.56,
+      "peak": 16845.43,
+      "capital": 14224.7,
+      "hasta": "2025-11-11T09:15:00+00:00"
+    },
+    {
+      "ts": "2025-11-11T09:15:00+00:00",
+      "dd_pct": 15.66,
+      "peak": 16845.43,
+      "capital": 14208.08,
+      "hasta": "2025-11-18T09:15:00+00:00"
+    },
+    {
+      "ts": "2025-11-18T09:15:00+00:00",
+      "dd_pct": 15.66,
+      "peak": 16845.43,
+      "capital": 14208.08,
+      "hasta": "2025-11-25T09:15:00+00:00"
+    },
+    {
+      "ts": "2025-11-25T09:15:00+00:00",
+      "dd_pct": 15.66,
+      "peak": 16845.43,
+      "capital": 14208.08,
+      "hasta": "2025-12-02T09:15:00+00:00"
+    },
+    {
+      "ts": "2025-12-11T13:45:00+00:00",
+      "dd_pct": 15.59,
+      "peak": 17876.49,
+      "capital": 15090.19,
+      "hasta": "2025-12-18T13:45:00+00:00"
+    },
+    {
+      "ts": "2025-12-18T13:45:00+00:00",
+      "dd_pct": 17.08,
+      "peak": 17876.49,
+      "capital": 14823.28,
+      "hasta": "2025-12-25T13:45:00+00:00"
+    },
+    {
+      "ts": "2025-12-26T07:00:00+00:00",
+      "dd_pct": 17.08,
+      "peak": 17876.49,
+      "capital": 14823.28,
+      "hasta": "2026-01-02T07:00:00+00:00"
+    },
+    {
+      "ts": "2026-01-02T07:00:00+00:00",
+      "dd_pct": 17.08,
+      "peak": 17876.49,
+      "capital": 14823.28,
+      "hasta": "2026-01-09T07:00:00+00:00"
+    },
+    {
+      "ts": "2026-02-06T13:30:00+00:00",
+      "dd_pct": 15.72,
+      "peak": 24449.08,
+      "capital": 20605.23,
+      "hasta": "2026-02-13T13:30:00+00:00"
+    },
+    {
+      "ts": "2026-02-17T12:45:00+00:00",
+      "dd_pct": 15.17,
+      "peak": 24449.08,
+      "capital": 20740.26,
+      "hasta": "2026-02-24T12:45:00+00:00"
+    },
+    {
+      "ts": "2026-02-24T12:45:00+00:00",
+      "dd_pct": 16.5,
+      "peak": 24449.08,
+      "capital": 20414.41,
+      "hasta": "2026-03-03T12:45:00+00:00"
+    },
+    {
+      "ts": "2026-03-03T12:45:00+00:00",
+      "dd_pct": 16.24,
+      "peak": 24371.91,
+      "capital": 20414.41,
+      "hasta": "2026-03-10T12:45:00+00:00"
+    },
+    {
+      "ts": "2026-03-11T12:45:00+00:00",
+      "dd_pct": 16.05,
+      "peak": 22053.54,
+      "capital": 18514.42,
+      "hasta": "2026-03-18T12:45:00+00:00"
+    },
+    {
+      "ts": "2026-03-30T13:45:00+00:00",
+      "dd_pct": 15.48,
+      "peak": 24635.41,
+      "capital": 20822.9,
+      "hasta": "2026-04-06T13:45:00+00:00"
+    },
+    {
+      "ts": "2026-04-07T07:00:00+00:00",
+      "dd_pct": 15.43,
+      "peak": 24635.41,
+      "capital": 20833.01,
+      "hasta": "2026-04-14T07:00:00+00:00"
+    },
+    {
+      "ts": "2026-04-16T10:15:00+00:00",
+      "dd_pct": 16.06,
+      "peak": 24635.41,
+      "capital": 20679.82,
+      "hasta": "2026-04-23T10:15:00+00:00"
+    },
+    {
+      "ts": "2026-04-23T10:15:00+00:00",
+      "dd_pct": 18.63,
+      "peak": 24635.41,
+      "capital": 20044.81,
+      "hasta": "2026-04-30T10:15:00+00:00"
+    }
+  ],
+  "aportes_log": [
+    {
+      "fecha": "2023-05-15",
+      "capital_tras_aporte": 394.34
+    },
+    {
+      "fecha": "2023-06-15",
+      "capital_tras_aporte": 756.37
+    },
+    {
+      "fecha": "2023-07-15",
+      "capital_tras_aporte": 825.49
+    },
+    {
+      "fecha": "2023-08-15",
+      "capital_tras_aporte": 891.45
+    },
+    {
+      "fecha": "2023-09-15",
+      "capital_tras_aporte": 1102.65
+    },
+    {
+      "fecha": "2023-10-15",
+      "capital_tras_aporte": 1204.31
+    },
+    {
+      "fecha": "2023-11-15",
+      "capital_tras_aporte": 2286.21
+    },
+    {
+      "fecha": "2023-12-15",
+      "capital_tras_aporte": 2363.16
+    },
+    {
+      "fecha": "2024-01-15",
+      "capital_tras_aporte": 2616.5
+    },
+    {
+      "fecha": "2024-02-15",
+      "capital_tras_aporte": 2458.55
+    },
+    {
+      "fecha": "2024-03-15",
+      "capital_tras_aporte": 2645.43
+    },
+    {
+      "fecha": "2024-04-15",
+      "capital_tras_aporte": 2891.05
+    },
+    {
+      "fecha": "2024-05-15",
+      "capital_tras_aporte": 4017.52
+    },
+    {
+      "fecha": "2024-06-15",
+      "capital_tras_aporte": 4331.0
+    },
+    {
+      "fecha": "2024-07-15",
+      "capital_tras_aporte": 5289.36
+    },
+    {
+      "fecha": "2024-08-15",
+      "capital_tras_aporte": 5340.16
+    },
+    {
+      "fecha": "2024-09-15",
+      "capital_tras_aporte": 4779.21
+    },
+    {
+      "fecha": "2024-10-15",
+      "capital_tras_aporte": 5535.83
+    },
+    {
+      "fecha": "2024-11-15",
+      "capital_tras_aporte": 5698.31
+    },
+    {
+      "fecha": "2024-12-15",
+      "capital_tras_aporte": 6666.78
+    },
+    {
+      "fecha": "2025-01-15",
+      "capital_tras_aporte": 6215.12
+    },
+    {
+      "fecha": "2025-02-15",
+      "capital_tras_aporte": 6385.22
+    },
+    {
+      "fecha": "2025-03-15",
+      "capital_tras_aporte": 7132.79
+    },
+    {
+      "fecha": "2025-04-15",
+      "capital_tras_aporte": 8355.6
+    },
+    {
+      "fecha": "2025-05-15",
+      "capital_tras_aporte": 11952.45
+    },
+    {
+      "fecha": "2025-06-15",
+      "capital_tras_aporte": 10588.57
+    },
+    {
+      "fecha": "2025-07-15",
+      "capital_tras_aporte": 13106.78
+    },
+    {
+      "fecha": "2025-08-15",
+      "capital_tras_aporte": 12813.43
+    },
+    {
+      "fecha": "2025-09-15",
+      "capital_tras_aporte": 10512.73
+    },
+    {
+      "fecha": "2025-10-15",
+      "capital_tras_aporte": 14773.84
+    },
+    {
+      "fecha": "2025-11-15",
+      "capital_tras_aporte": 14208.08
+    },
+    {
+      "fecha": "2025-12-15",
+      "capital_tras_aporte": 14823.28
+    },
+    {
+      "fecha": "2026-01-15",
+      "capital_tras_aporte": 15013.17
+    },
+    {
+      "fecha": "2026-02-15",
+      "capital_tras_aporte": 20805.23
+    },
+    {
+      "fecha": "2026-03-15",
+      "capital_tras_aporte": 20614.41
+    },
+    {
+      "fecha": "2026-04-15",
+      "capital_tras_aporte": 21033.01
+    }
+  ],
+  "semanas": [
+    {
+      "semana": 1,
+      "inicio": "2023-05-08",
+      "fin": "2023-05-15",
+      "trades": 28,
+      "ganadas": 9,
+      "win_rate": 0.321,
+      "profit_factor": 0.9,
+      "pnl_total": -5.665,
+      "capital_fin": 194.34,
+      "cb_activo": false
+    },
+    {
+      "semana": 2,
+      "inicio": "2023-05-15",
+      "fin": "2023-05-22",
+      "trades": 21,
+      "ganadas": 12,
+      "win_rate": 0.571,
+      "profit_factor": 2.457,
+      "pnl_total": 94.3446,
+      "capital_fin": 488.68,
+      "cb_activo": false
+    },
+    {
+      "semana": 3,
+      "inicio": "2023-05-22",
+      "fin": "2023-05-29",
+      "trades": 27,
+      "ganadas": 9,
+      "win_rate": 0.333,
+      "profit_factor": 0.955,
+      "pnl_total": -5.9312,
+      "capital_fin": 482.75,
+      "cb_activo": false
+    },
+    {
+      "semana": 4,
+      "inicio": "2023-05-29",
+      "fin": "2023-06-05",
+      "trades": 23,
+      "ganadas": 10,
+      "win_rate": 0.435,
+      "profit_factor": 1.448,
+      "pnl_total": 48.7265,
+      "capital_fin": 531.47,
+      "cb_activo": false
+    },
+    {
+      "semana": 5,
+      "inicio": "2023-06-05",
+      "fin": "2023-06-12",
+      "trades": 29,
+      "ganadas": 11,
+      "win_rate": 0.379,
+      "profit_factor": 1.159,
+      "pnl_total": 24.8928,
+      "capital_fin": 556.37,
+      "cb_activo": false
+    },
+    {
+      "semana": 6,
+      "inicio": "2023-06-12",
+      "fin": "2023-06-19",
+      "trades": 22,
+      "ganadas": 3,
+      "win_rate": 0.136,
+      "profit_factor": 0.328,
+      "pnl_total": -130.8755,
+      "capital_fin": 625.49,
+      "cb_activo": true
+    },
+    {
+      "semana": 7,
+      "inicio": "2023-06-19",
+      "fin": "2023-06-26",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 625.49,
+      "cb_activo": true
+    },
+    {
+      "semana": 8,
+      "inicio": "2023-06-26",
+      "fin": "2023-07-03",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 625.49,
+      "cb_activo": true
+    },
+    {
+      "semana": 9,
+      "inicio": "2023-07-03",
+      "fin": "2023-07-10",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 625.49,
+      "cb_activo": true
+    },
+    {
+      "semana": 10,
+      "inicio": "2023-07-10",
+      "fin": "2023-07-17",
+      "trades": 6,
+      "ganadas": 1,
+      "win_rate": 0.167,
+      "profit_factor": 0.394,
+      "pnl_total": -38.0481,
+      "capital_fin": 787.44,
+      "cb_activo": false
+    },
+    {
+      "semana": 11,
+      "inicio": "2023-07-17",
+      "fin": "2023-07-24",
+      "trades": 18,
+      "ganadas": 5,
+      "win_rate": 0.278,
+      "profit_factor": 0.761,
+      "pnl_total": -37.2144,
+      "capital_fin": 750.23,
+      "cb_activo": false
+    },
+    {
+      "semana": 12,
+      "inicio": "2023-07-24",
+      "fin": "2023-07-31",
+      "trades": 22,
+      "ganadas": 7,
+      "win_rate": 0.318,
+      "profit_factor": 0.917,
+      "pnl_total": -14.8173,
+      "capital_fin": 735.41,
+      "cb_activo": true
+    },
+    {
+      "semana": 13,
+      "inicio": "2023-07-31",
+      "fin": "2023-08-07",
+      "trades": 4,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -43.958,
+      "capital_fin": 691.45,
+      "cb_activo": true
+    },
+    {
+      "semana": 14,
+      "inicio": "2023-08-07",
+      "fin": "2023-08-14",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 691.45,
+      "cb_activo": true
+    },
+    {
+      "semana": 15,
+      "inicio": "2023-08-14",
+      "fin": "2023-08-21",
+      "trades": 1,
+      "ganadas": 1,
+      "win_rate": 1.0,
+      "profit_factor": 99.0,
+      "pnl_total": 26.742,
+      "capital_fin": 918.2,
+      "cb_activo": false
+    },
+    {
+      "semana": 16,
+      "inicio": "2023-08-21",
+      "fin": "2023-08-28",
+      "trades": 31,
+      "ganadas": 14,
+      "win_rate": 0.452,
+      "profit_factor": 1.612,
+      "pnl_total": 149.5344,
+      "capital_fin": 1067.73,
+      "cb_activo": false
+    },
+    {
+      "semana": 17,
+      "inicio": "2023-08-28",
+      "fin": "2023-09-04",
+      "trades": 14,
+      "ganadas": 1,
+      "win_rate": 0.071,
+      "profit_factor": 0.148,
+      "pnl_total": -165.0844,
+      "capital_fin": 902.65,
+      "cb_activo": true
+    },
+    {
+      "semana": 18,
+      "inicio": "2023-09-04",
+      "fin": "2023-09-11",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 902.65,
+      "cb_activo": true
+    },
+    {
+      "semana": 19,
+      "inicio": "2023-09-11",
+      "fin": "2023-09-18",
+      "trades": 4,
+      "ganadas": 1,
+      "win_rate": 0.25,
+      "profit_factor": 0.654,
+      "pnl_total": -17.4824,
+      "capital_fin": 1085.16,
+      "cb_activo": false
+    },
+    {
+      "semana": 20,
+      "inicio": "2023-09-18",
+      "fin": "2023-09-25",
+      "trades": 21,
+      "ganadas": 7,
+      "win_rate": 0.333,
+      "profit_factor": 0.99,
+      "pnl_total": -2.33,
+      "capital_fin": 1082.83,
+      "cb_activo": false
+    },
+    {
+      "semana": 21,
+      "inicio": "2023-09-25",
+      "fin": "2023-10-02",
+      "trades": 8,
+      "ganadas": 1,
+      "win_rate": 0.125,
+      "profit_factor": 0.29,
+      "pnl_total": -78.5284,
+      "capital_fin": 1004.31,
+      "cb_activo": true
+    },
+    {
+      "semana": 22,
+      "inicio": "2023-10-02",
+      "fin": "2023-10-09",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 1004.31,
+      "cb_activo": true
+    },
+    {
+      "semana": 23,
+      "inicio": "2023-10-09",
+      "fin": "2023-10-16",
+      "trades": 19,
+      "ganadas": 6,
+      "win_rate": 0.316,
+      "profit_factor": 0.884,
+      "pnl_total": -27.9191,
+      "capital_fin": 1176.39,
+      "cb_activo": false
+    },
+    {
+      "semana": 24,
+      "inicio": "2023-10-16",
+      "fin": "2023-10-23",
+      "trades": 24,
+      "ganadas": 14,
+      "win_rate": 0.583,
+      "profit_factor": 2.64,
+      "pnl_total": 348.3517,
+      "capital_fin": 1524.74,
+      "cb_activo": false
+    },
+    {
+      "semana": 25,
+      "inicio": "2023-10-23",
+      "fin": "2023-10-30",
+      "trades": 29,
+      "ganadas": 9,
+      "win_rate": 0.31,
+      "profit_factor": 0.88,
+      "pnl_total": -56.7296,
+      "capital_fin": 1468.01,
+      "cb_activo": false
+    },
+    {
+      "semana": 26,
+      "inicio": "2023-10-30",
+      "fin": "2023-11-06",
+      "trades": 36,
+      "ganadas": 16,
+      "win_rate": 0.444,
+      "profit_factor": 1.523,
+      "pnl_total": 259.2511,
+      "capital_fin": 1727.26,
+      "cb_activo": false
+    },
+    {
+      "semana": 27,
+      "inicio": "2023-11-06",
+      "fin": "2023-11-13",
+      "trades": 23,
+      "ganadas": 12,
+      "win_rate": 0.522,
+      "profit_factor": 2.246,
+      "pnl_total": 358.9467,
+      "capital_fin": 2086.21,
+      "cb_activo": false
+    },
+    {
+      "semana": 28,
+      "inicio": "2023-11-13",
+      "fin": "2023-11-20",
+      "trades": 24,
+      "ganadas": 7,
+      "win_rate": 0.292,
+      "profit_factor": 0.801,
+      "pnl_total": -123.0435,
+      "capital_fin": 2163.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 29,
+      "inicio": "2023-11-20",
+      "fin": "2023-11-27",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2163.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 30,
+      "inicio": "2023-11-27",
+      "fin": "2023-12-04",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2163.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 31,
+      "inicio": "2023-12-04",
+      "fin": "2023-12-11",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2163.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 32,
+      "inicio": "2023-12-11",
+      "fin": "2023-12-18",
+      "trades": 7,
+      "ganadas": 4,
+      "win_rate": 0.571,
+      "profit_factor": 2.67,
+      "pnl_total": 178.3807,
+      "capital_fin": 2541.54,
+      "cb_activo": false
+    },
+    {
+      "semana": 33,
+      "inicio": "2023-12-18",
+      "fin": "2023-12-25",
+      "trades": 37,
+      "ganadas": 15,
+      "win_rate": 0.405,
+      "profit_factor": 1.33,
+      "pnl_total": 298.9828,
+      "capital_fin": 2840.53,
+      "cb_activo": false
+    },
+    {
+      "semana": 34,
+      "inicio": "2023-12-25",
+      "fin": "2024-01-01",
+      "trades": 25,
+      "ganadas": 7,
+      "win_rate": 0.28,
+      "profit_factor": 0.763,
+      "pnl_total": -177.6497,
+      "capital_fin": 2662.88,
+      "cb_activo": false
+    },
+    {
+      "semana": 35,
+      "inicio": "2024-01-01",
+      "fin": "2024-01-08",
+      "trades": 21,
+      "ganadas": 5,
+      "win_rate": 0.238,
+      "profit_factor": 0.618,
+      "pnl_total": -246.3814,
+      "capital_fin": 2416.5,
+      "cb_activo": true
+    },
+    {
+      "semana": 36,
+      "inicio": "2024-01-08",
+      "fin": "2024-01-15",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2416.5,
+      "cb_activo": true
+    },
+    {
+      "semana": 37,
+      "inicio": "2024-01-15",
+      "fin": "2024-01-22",
+      "trades": 1,
+      "ganadas": 1,
+      "win_rate": 1.0,
+      "profit_factor": 99.0,
+      "pnl_total": 78.494,
+      "capital_fin": 2694.99,
+      "cb_activo": false
+    },
+    {
+      "semana": 38,
+      "inicio": "2024-01-22",
+      "fin": "2024-01-29",
+      "trades": 21,
+      "ganadas": 5,
+      "win_rate": 0.238,
+      "profit_factor": 0.606,
+      "pnl_total": -246.6485,
+      "capital_fin": 2448.34,
+      "cb_activo": true
+    },
+    {
+      "semana": 39,
+      "inicio": "2024-01-29",
+      "fin": "2024-02-05",
+      "trades": 11,
+      "ganadas": 2,
+      "win_rate": 0.182,
+      "profit_factor": 0.425,
+      "pnl_total": -189.792,
+      "capital_fin": 2258.55,
+      "cb_activo": true
+    },
+    {
+      "semana": 40,
+      "inicio": "2024-02-05",
+      "fin": "2024-02-12",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2258.55,
+      "cb_activo": true
+    },
+    {
+      "semana": 41,
+      "inicio": "2024-02-12",
+      "fin": "2024-02-19",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2458.55,
+      "cb_activo": false
+    },
+    {
+      "semana": 42,
+      "inicio": "2024-02-19",
+      "fin": "2024-02-26",
+      "trades": 6,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -216.288,
+      "capital_fin": 2242.26,
+      "cb_activo": true
+    },
+    {
+      "semana": 43,
+      "inicio": "2024-02-26",
+      "fin": "2024-03-04",
+      "trades": 16,
+      "ganadas": 9,
+      "win_rate": 0.562,
+      "profit_factor": 2.508,
+      "pnl_total": 379.3735,
+      "capital_fin": 2621.63,
+      "cb_activo": false
+    },
+    {
+      "semana": 44,
+      "inicio": "2024-03-04",
+      "fin": "2024-03-11",
+      "trades": 28,
+      "ganadas": 8,
+      "win_rate": 0.286,
+      "profit_factor": 0.786,
+      "pnl_total": -176.1997,
+      "capital_fin": 2445.43,
+      "cb_activo": true
+    },
+    {
+      "semana": 45,
+      "inicio": "2024-03-11",
+      "fin": "2024-03-18",
+      "trades": 4,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -156.4709,
+      "capital_fin": 2488.96,
+      "cb_activo": true
+    },
+    {
+      "semana": 46,
+      "inicio": "2024-03-18",
+      "fin": "2024-03-25",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2488.96,
+      "cb_activo": true
+    },
+    {
+      "semana": 47,
+      "inicio": "2024-03-25",
+      "fin": "2024-04-01",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2488.96,
+      "cb_activo": true
+    },
+    {
+      "semana": 48,
+      "inicio": "2024-04-01",
+      "fin": "2024-04-08",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 2488.96,
+      "cb_activo": false
+    },
+    {
+      "semana": 49,
+      "inicio": "2024-04-08",
+      "fin": "2024-04-15",
+      "trades": 21,
+      "ganadas": 9,
+      "win_rate": 0.429,
+      "profit_factor": 1.443,
+      "pnl_total": 202.0891,
+      "capital_fin": 2691.05,
+      "cb_activo": false
+    },
+    {
+      "semana": 50,
+      "inicio": "2024-04-15",
+      "fin": "2024-04-22",
+      "trades": 19,
+      "ganadas": 6,
+      "win_rate": 0.316,
+      "profit_factor": 0.899,
+      "pnl_total": -56.4904,
+      "capital_fin": 2834.56,
+      "cb_activo": false
+    },
+    {
+      "semana": 51,
+      "inicio": "2024-04-22",
+      "fin": "2024-04-29",
+      "trades": 35,
+      "ganadas": 15,
+      "win_rate": 0.429,
+      "profit_factor": 1.487,
+      "pnl_total": 429.7635,
+      "capital_fin": 3264.33,
+      "cb_activo": false
+    },
+    {
+      "semana": 52,
+      "inicio": "2024-04-29",
+      "fin": "2024-05-06",
+      "trades": 27,
+      "ganadas": 10,
+      "win_rate": 0.37,
+      "profit_factor": 1.128,
+      "pnl_total": 111.5203,
+      "capital_fin": 3375.85,
+      "cb_activo": false
+    },
+    {
+      "semana": 53,
+      "inicio": "2024-05-06",
+      "fin": "2024-05-13",
+      "trades": 27,
+      "ganadas": 12,
+      "win_rate": 0.444,
+      "profit_factor": 1.532,
+      "pnl_total": 441.6782,
+      "capital_fin": 3817.52,
+      "cb_activo": false
+    },
+    {
+      "semana": 54,
+      "inicio": "2024-05-13",
+      "fin": "2024-05-20",
+      "trades": 32,
+      "ganadas": 12,
+      "win_rate": 0.375,
+      "profit_factor": 1.154,
+      "pnl_total": 189.3814,
+      "capital_fin": 4206.91,
+      "cb_activo": false
+    },
+    {
+      "semana": 55,
+      "inicio": "2024-05-20",
+      "fin": "2024-05-27",
+      "trades": 24,
+      "ganadas": 10,
+      "win_rate": 0.417,
+      "profit_factor": 1.392,
+      "pnl_total": 351.0596,
+      "capital_fin": 4557.97,
+      "cb_activo": false
+    },
+    {
+      "semana": 56,
+      "inicio": "2024-05-27",
+      "fin": "2024-06-03",
+      "trades": 24,
+      "ganadas": 6,
+      "win_rate": 0.25,
+      "profit_factor": 0.664,
+      "pnl_total": -426.9611,
+      "capital_fin": 4131.0,
+      "cb_activo": true
+    },
+    {
+      "semana": 57,
+      "inicio": "2024-06-03",
+      "fin": "2024-06-10",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 4131.0,
+      "cb_activo": true
+    },
+    {
+      "semana": 58,
+      "inicio": "2024-06-10",
+      "fin": "2024-06-17",
+      "trades": 3,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -194.894,
+      "capital_fin": 4136.11,
+      "cb_activo": true
+    },
+    {
+      "semana": 59,
+      "inicio": "2024-06-17",
+      "fin": "2024-06-24",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 4136.11,
+      "cb_activo": true
+    },
+    {
+      "semana": 60,
+      "inicio": "2024-06-24",
+      "fin": "2024-07-01",
+      "trades": 6,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -363.6526,
+      "capital_fin": 3772.46,
+      "cb_activo": false
+    },
+    {
+      "semana": 61,
+      "inicio": "2024-07-01",
+      "fin": "2024-07-08",
+      "trades": 5,
+      "ganadas": 2,
+      "win_rate": 0.4,
+      "profit_factor": 1.307,
+      "pnl_total": 51.5477,
+      "capital_fin": 3824.01,
+      "cb_activo": true
+    },
+    {
+      "semana": 62,
+      "inicio": "2024-07-08",
+      "fin": "2024-07-15",
+      "trades": 22,
+      "ganadas": 14,
+      "win_rate": 0.636,
+      "profit_factor": 3.375,
+      "pnl_total": 1265.3572,
+      "capital_fin": 5089.36,
+      "cb_activo": false
+    },
+    {
+      "semana": 63,
+      "inicio": "2024-07-15",
+      "fin": "2024-07-22",
+      "trades": 28,
+      "ganadas": 10,
+      "win_rate": 0.357,
+      "profit_factor": 1.068,
+      "pnl_total": 105.4085,
+      "capital_fin": 5394.77,
+      "cb_activo": false
+    },
+    {
+      "semana": 64,
+      "inicio": "2024-07-22",
+      "fin": "2024-07-29",
+      "trades": 3,
+      "ganadas": 1,
+      "win_rate": 0.333,
+      "profit_factor": 0.992,
+      "pnl_total": -1.214,
+      "capital_fin": 5393.56,
+      "cb_activo": true
+    },
+    {
+      "semana": 65,
+      "inicio": "2024-07-29",
+      "fin": "2024-08-05",
+      "trades": 3,
+      "ganadas": 1,
+      "win_rate": 0.333,
+      "profit_factor": 1.0,
+      "pnl_total": 0.0,
+      "capital_fin": 5393.56,
+      "cb_activo": true
+    },
+    {
+      "semana": 66,
+      "inicio": "2024-08-05",
+      "fin": "2024-08-12",
+      "trades": 9,
+      "ganadas": 2,
+      "win_rate": 0.222,
+      "profit_factor": 0.559,
+      "pnl_total": -253.3944,
+      "capital_fin": 5140.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 67,
+      "inicio": "2024-08-12",
+      "fin": "2024-08-19",
+      "trades": 4,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -319.206,
+      "capital_fin": 5020.96,
+      "cb_activo": false
+    },
+    {
+      "semana": 68,
+      "inicio": "2024-08-19",
+      "fin": "2024-08-26",
+      "trades": 6,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -441.7488,
+      "capital_fin": 4579.21,
+      "cb_activo": true
+    },
+    {
+      "semana": 69,
+      "inicio": "2024-08-26",
+      "fin": "2024-09-02",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 4579.21,
+      "cb_activo": true
+    },
+    {
+      "semana": 70,
+      "inicio": "2024-09-02",
+      "fin": "2024-09-09",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 4579.21,
+      "cb_activo": true
+    },
+    {
+      "semana": 71,
+      "inicio": "2024-09-09",
+      "fin": "2024-09-16",
+      "trades": 16,
+      "ganadas": 7,
+      "win_rate": 0.438,
+      "profit_factor": 1.482,
+      "pnl_total": 329.3882,
+      "capital_fin": 5108.6,
+      "cb_activo": false
+    },
+    {
+      "semana": 72,
+      "inicio": "2024-09-16",
+      "fin": "2024-09-23",
+      "trades": 24,
+      "ganadas": 13,
+      "win_rate": 0.542,
+      "profit_factor": 2.4,
+      "pnl_total": 1225.4355,
+      "capital_fin": 6334.03,
+      "cb_activo": false
+    },
+    {
+      "semana": 73,
+      "inicio": "2024-09-23",
+      "fin": "2024-09-30",
+      "trades": 17,
+      "ganadas": 2,
+      "win_rate": 0.118,
+      "profit_factor": 0.268,
+      "pnl_total": -998.1973,
+      "capital_fin": 5335.83,
+      "cb_activo": true
+    },
+    {
+      "semana": 74,
+      "inicio": "2024-09-30",
+      "fin": "2024-10-07",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 5335.83,
+      "cb_activo": true
+    },
+    {
+      "semana": 75,
+      "inicio": "2024-10-07",
+      "fin": "2024-10-14",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 5335.83,
+      "cb_activo": true
+    },
+    {
+      "semana": 76,
+      "inicio": "2024-10-14",
+      "fin": "2024-10-21",
+      "trades": 4,
+      "ganadas": 2,
+      "win_rate": 0.5,
+      "profit_factor": 2.0,
+      "pnl_total": 164.8283,
+      "capital_fin": 5700.66,
+      "cb_activo": true
+    },
+    {
+      "semana": 77,
+      "inicio": "2024-10-21",
+      "fin": "2024-10-28",
+      "trades": 6,
+      "ganadas": 3,
+      "win_rate": 0.5,
+      "profit_factor": 1.971,
+      "pnl_total": 256.527,
+      "capital_fin": 5957.19,
+      "cb_activo": false
+    },
+    {
+      "semana": 78,
+      "inicio": "2024-10-28",
+      "fin": "2024-11-04",
+      "trades": 23,
+      "ganadas": 6,
+      "win_rate": 0.261,
+      "profit_factor": 0.682,
+      "pnl_total": -456.4506,
+      "capital_fin": 5500.74,
+      "cb_activo": true
+    },
+    {
+      "semana": 79,
+      "inicio": "2024-11-04",
+      "fin": "2024-11-11",
+      "trades": 6,
+      "ganadas": 2,
+      "win_rate": 0.333,
+      "profit_factor": 0.993,
+      "pnl_total": -2.4253,
+      "capital_fin": 5498.31,
+      "cb_activo": false
+    },
+    {
+      "semana": 80,
+      "inicio": "2024-11-11",
+      "fin": "2024-11-18",
+      "trades": 6,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -498.4465,
+      "capital_fin": 5199.87,
+      "cb_activo": true
+    },
+    {
+      "semana": 81,
+      "inicio": "2024-11-18",
+      "fin": "2024-11-25",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 5199.87,
+      "cb_activo": true
+    },
+    {
+      "semana": 82,
+      "inicio": "2024-11-25",
+      "fin": "2024-12-02",
+      "trades": 19,
+      "ganadas": 10,
+      "win_rate": 0.526,
+      "profit_factor": 2.167,
+      "pnl_total": 880.0416,
+      "capital_fin": 6079.91,
+      "cb_activo": false
+    },
+    {
+      "semana": 83,
+      "inicio": "2024-12-02",
+      "fin": "2024-12-09",
+      "trades": 34,
+      "ganadas": 13,
+      "win_rate": 0.382,
+      "profit_factor": 1.194,
+      "pnl_total": 386.8733,
+      "capital_fin": 6466.78,
+      "cb_activo": false
+    },
+    {
+      "semana": 84,
+      "inicio": "2024-12-09",
+      "fin": "2024-12-16",
+      "trades": 20,
+      "ganadas": 7,
+      "win_rate": 0.35,
+      "profit_factor": 1.028,
+      "pnl_total": 38.0145,
+      "capital_fin": 6704.8,
+      "cb_activo": true
+    },
+    {
+      "semana": 85,
+      "inicio": "2024-12-16",
+      "fin": "2024-12-23",
+      "trades": 6,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -592.6325,
+      "capital_fin": 6112.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 86,
+      "inicio": "2024-12-23",
+      "fin": "2024-12-30",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 6112.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 87,
+      "inicio": "2024-12-30",
+      "fin": "2025-01-06",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 6112.16,
+      "cb_activo": true
+    },
+    {
+      "semana": 88,
+      "inicio": "2025-01-06",
+      "fin": "2025-01-13",
+      "trades": 4,
+      "ganadas": 1,
+      "win_rate": 0.25,
+      "profit_factor": 0.654,
+      "pnl_total": -97.0412,
+      "capital_fin": 6015.12,
+      "cb_activo": false
+    },
+    {
+      "semana": 89,
+      "inicio": "2025-01-13",
+      "fin": "2025-01-20",
+      "trades": 31,
+      "ganadas": 13,
+      "win_rate": 0.419,
+      "profit_factor": 1.394,
+      "pnl_total": 691.7523,
+      "capital_fin": 6906.88,
+      "cb_activo": false
+    },
+    {
+      "semana": 90,
+      "inicio": "2025-01-20",
+      "fin": "2025-01-27",
+      "trades": 30,
+      "ganadas": 8,
+      "win_rate": 0.267,
+      "profit_factor": 0.706,
+      "pnl_total": -666.3087,
+      "capital_fin": 6240.57,
+      "cb_activo": true
+    },
+    {
+      "semana": 91,
+      "inicio": "2025-01-27",
+      "fin": "2025-02-03",
+      "trades": 12,
+      "ganadas": 8,
+      "win_rate": 0.667,
+      "profit_factor": 4.013,
+      "pnl_total": 1193.599,
+      "capital_fin": 7434.17,
+      "cb_activo": false
+    },
+    {
+      "semana": 92,
+      "inicio": "2025-02-03",
+      "fin": "2025-02-10",
+      "trades": 18,
+      "ganadas": 2,
+      "win_rate": 0.111,
+      "profit_factor": 0.253,
+      "pnl_total": -1248.9494,
+      "capital_fin": 6185.22,
+      "cb_activo": true
+    },
+    {
+      "semana": 93,
+      "inicio": "2025-02-10",
+      "fin": "2025-02-17",
+      "trades": 1,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -95.778,
+      "capital_fin": 6289.44,
+      "cb_activo": true
+    },
+    {
+      "semana": 94,
+      "inicio": "2025-02-17",
+      "fin": "2025-02-24",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 6289.44,
+      "cb_activo": true
+    },
+    {
+      "semana": 95,
+      "inicio": "2025-02-24",
+      "fin": "2025-03-03",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 6289.44,
+      "cb_activo": true
+    },
+    {
+      "semana": 96,
+      "inicio": "2025-03-03",
+      "fin": "2025-03-10",
+      "trades": 17,
+      "ganadas": 8,
+      "win_rate": 0.471,
+      "profit_factor": 1.71,
+      "pnl_total": 643.3547,
+      "capital_fin": 6932.79,
+      "cb_activo": false
+    },
+    {
+      "semana": 97,
+      "inicio": "2025-03-10",
+      "fin": "2025-03-17",
+      "trades": 26,
+      "ganadas": 15,
+      "win_rate": 0.577,
+      "profit_factor": 2.708,
+      "pnl_total": 2238.3818,
+      "capital_fin": 9371.17,
+      "cb_activo": false
+    },
+    {
+      "semana": 98,
+      "inicio": "2025-03-17",
+      "fin": "2025-03-24",
+      "trades": 12,
+      "ganadas": 1,
+      "win_rate": 0.083,
+      "profit_factor": 0.192,
+      "pnl_total": -1215.5748,
+      "capital_fin": 8155.6,
+      "cb_activo": true
+    },
+    {
+      "semana": 99,
+      "inicio": "2025-03-24",
+      "fin": "2025-03-31",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 8155.6,
+      "cb_activo": true
+    },
+    {
+      "semana": 100,
+      "inicio": "2025-03-31",
+      "fin": "2025-04-07",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 8155.6,
+      "cb_activo": true
+    },
+    {
+      "semana": 101,
+      "inicio": "2025-04-07",
+      "fin": "2025-04-14",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 8155.6,
+      "cb_activo": true
+    },
+    {
+      "semana": 102,
+      "inicio": "2025-04-14",
+      "fin": "2025-04-21",
+      "trades": 14,
+      "ganadas": 5,
+      "win_rate": 0.357,
+      "profit_factor": 1.091,
+      "pnl_total": 98.796,
+      "capital_fin": 8454.4,
+      "cb_activo": false
+    },
+    {
+      "semana": 103,
+      "inicio": "2025-04-21",
+      "fin": "2025-04-28",
+      "trades": 20,
+      "ganadas": 13,
+      "win_rate": 0.65,
+      "profit_factor": 3.845,
+      "pnl_total": 2636.1533,
+      "capital_fin": 11090.55,
+      "cb_activo": false
+    },
+    {
+      "semana": 104,
+      "inicio": "2025-04-28",
+      "fin": "2025-05-05",
+      "trades": 31,
+      "ganadas": 11,
+      "win_rate": 0.355,
+      "profit_factor": 1.058,
+      "pnl_total": 197.1924,
+      "capital_fin": 11287.74,
+      "cb_activo": false
+    },
+    {
+      "semana": 105,
+      "inicio": "2025-05-05",
+      "fin": "2025-05-12",
+      "trades": 15,
+      "ganadas": 6,
+      "win_rate": 0.4,
+      "profit_factor": 1.308,
+      "pnl_total": 464.713,
+      "capital_fin": 11752.45,
+      "cb_activo": false
+    },
+    {
+      "semana": 106,
+      "inicio": "2025-05-12",
+      "fin": "2025-05-19",
+      "trades": 18,
+      "ganadas": 3,
+      "win_rate": 0.167,
+      "profit_factor": 0.399,
+      "pnl_total": -1563.8863,
+      "capital_fin": 10388.57,
+      "cb_activo": true
+    },
+    {
+      "semana": 107,
+      "inicio": "2025-05-19",
+      "fin": "2025-05-26",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 10388.57,
+      "cb_activo": true
+    },
+    {
+      "semana": 108,
+      "inicio": "2025-05-26",
+      "fin": "2025-06-02",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 10388.57,
+      "cb_activo": true
+    },
+    {
+      "semana": 109,
+      "inicio": "2025-06-02",
+      "fin": "2025-06-09",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 10388.57,
+      "cb_activo": true
+    },
+    {
+      "semana": 110,
+      "inicio": "2025-06-09",
+      "fin": "2025-06-16",
+      "trades": 15,
+      "ganadas": 8,
+      "win_rate": 0.533,
+      "profit_factor": 2.266,
+      "pnl_total": 1483.5011,
+      "capital_fin": 12072.07,
+      "cb_activo": false
+    },
+    {
+      "semana": 111,
+      "inicio": "2025-06-16",
+      "fin": "2025-06-23",
+      "trades": 36,
+      "ganadas": 15,
+      "win_rate": 0.417,
+      "profit_factor": 1.352,
+      "pnl_total": 1550.3366,
+      "capital_fin": 13622.41,
+      "cb_activo": false
+    },
+    {
+      "semana": 112,
+      "inicio": "2025-06-23",
+      "fin": "2025-06-30",
+      "trades": 38,
+      "ganadas": 13,
+      "win_rate": 0.342,
+      "profit_factor": 0.985,
+      "pnl_total": -77.6159,
+      "capital_fin": 13544.79,
+      "cb_activo": false
+    },
+    {
+      "semana": 113,
+      "inicio": "2025-06-30",
+      "fin": "2025-07-07",
+      "trades": 14,
+      "ganadas": 4,
+      "win_rate": 0.286,
+      "profit_factor": 0.785,
+      "pnl_total": -429.6596,
+      "capital_fin": 13115.13,
+      "cb_activo": true
+    },
+    {
+      "semana": 114,
+      "inicio": "2025-07-07",
+      "fin": "2025-07-14",
+      "trades": 4,
+      "ganadas": 1,
+      "win_rate": 0.25,
+      "profit_factor": 0.643,
+      "pnl_total": -208.353,
+      "capital_fin": 12906.78,
+      "cb_activo": false
+    },
+    {
+      "semana": 115,
+      "inicio": "2025-07-14",
+      "fin": "2025-07-21",
+      "trades": 23,
+      "ganadas": 7,
+      "win_rate": 0.304,
+      "profit_factor": 0.854,
+      "pnl_total": -493.3459,
+      "capital_fin": 12613.43,
+      "cb_activo": true
+    },
+    {
+      "semana": 116,
+      "inicio": "2025-07-21",
+      "fin": "2025-07-28",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 12613.43,
+      "cb_activo": true
+    },
+    {
+      "semana": 117,
+      "inicio": "2025-07-28",
+      "fin": "2025-08-04",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 12613.43,
+      "cb_activo": true
+    },
+    {
+      "semana": 118,
+      "inicio": "2025-08-04",
+      "fin": "2025-08-11",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 12613.43,
+      "cb_activo": true
+    },
+    {
+      "semana": 119,
+      "inicio": "2025-08-11",
+      "fin": "2025-08-18",
+      "trades": 7,
+      "ganadas": 2,
+      "win_rate": 0.286,
+      "profit_factor": 0.757,
+      "pnl_total": -228.5028,
+      "capital_fin": 12584.93,
+      "cb_activo": false
+    },
+    {
+      "semana": 120,
+      "inicio": "2025-08-18",
+      "fin": "2025-08-25",
+      "trades": 19,
+      "ganadas": 2,
+      "win_rate": 0.105,
+      "profit_factor": 0.241,
+      "pnl_total": -2272.1981,
+      "capital_fin": 10312.73,
+      "cb_activo": true
+    },
+    {
+      "semana": 121,
+      "inicio": "2025-08-25",
+      "fin": "2025-09-01",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 10312.73,
+      "cb_activo": true
+    },
+    {
+      "semana": 122,
+      "inicio": "2025-09-01",
+      "fin": "2025-09-08",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 10312.73,
+      "cb_activo": true
+    },
+    {
+      "semana": 123,
+      "inicio": "2025-09-08",
+      "fin": "2025-09-15",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 10312.73,
+      "cb_activo": true
+    },
+    {
+      "semana": 124,
+      "inicio": "2025-09-15",
+      "fin": "2025-09-22",
+      "trades": 6,
+      "ganadas": 3,
+      "win_rate": 0.5,
+      "profit_factor": 1.853,
+      "pnl_total": 435.5691,
+      "capital_fin": 10948.3,
+      "cb_activo": false
+    },
+    {
+      "semana": 125,
+      "inicio": "2025-09-22",
+      "fin": "2025-09-29",
+      "trades": 30,
+      "ganadas": 10,
+      "win_rate": 0.333,
+      "profit_factor": 0.959,
+      "pnl_total": -133.9678,
+      "capital_fin": 10814.33,
+      "cb_activo": false
+    },
+    {
+      "semana": 126,
+      "inicio": "2025-09-29",
+      "fin": "2025-10-06",
+      "trades": 20,
+      "ganadas": 12,
+      "win_rate": 0.6,
+      "profit_factor": 2.85,
+      "pnl_total": 2824.0086,
+      "capital_fin": 13638.34,
+      "cb_activo": false
+    },
+    {
+      "semana": 127,
+      "inicio": "2025-10-06",
+      "fin": "2025-10-13",
+      "trades": 25,
+      "ganadas": 10,
+      "win_rate": 0.4,
+      "profit_factor": 1.287,
+      "pnl_total": 935.4989,
+      "capital_fin": 14573.84,
+      "cb_activo": false
+    },
+    {
+      "semana": 128,
+      "inicio": "2025-10-13",
+      "fin": "2025-10-20",
+      "trades": 28,
+      "ganadas": 11,
+      "win_rate": 0.393,
+      "profit_factor": 1.266,
+      "pnl_total": 1018.7271,
+      "capital_fin": 15792.57,
+      "cb_activo": false
+    },
+    {
+      "semana": 129,
+      "inicio": "2025-10-20",
+      "fin": "2025-10-27",
+      "trades": 16,
+      "ganadas": 6,
+      "win_rate": 0.375,
+      "profit_factor": 1.154,
+      "pnl_total": 364.3959,
+      "capital_fin": 16156.96,
+      "cb_activo": false
+    },
+    {
+      "semana": 130,
+      "inicio": "2025-10-27",
+      "fin": "2025-11-03",
+      "trades": 26,
+      "ganadas": 8,
+      "win_rate": 0.308,
+      "profit_factor": 0.871,
+      "pnl_total": -563.6338,
+      "capital_fin": 15593.33,
+      "cb_activo": false
+    },
+    {
+      "semana": 131,
+      "inicio": "2025-11-03",
+      "fin": "2025-11-10",
+      "trades": 7,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -1585.2442,
+      "capital_fin": 14008.08,
+      "cb_activo": true
+    },
+    {
+      "semana": 132,
+      "inicio": "2025-11-10",
+      "fin": "2025-11-17",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 14208.08,
+      "cb_activo": true
+    },
+    {
+      "semana": 133,
+      "inicio": "2025-11-17",
+      "fin": "2025-11-24",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 14208.08,
+      "cb_activo": true
+    },
+    {
+      "semana": 134,
+      "inicio": "2025-11-24",
+      "fin": "2025-12-01",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 14208.08,
+      "cb_activo": true
+    },
+    {
+      "semana": 135,
+      "inicio": "2025-12-01",
+      "fin": "2025-12-08",
+      "trades": 13,
+      "ganadas": 7,
+      "win_rate": 0.538,
+      "profit_factor": 2.267,
+      "pnl_total": 1714.6855,
+      "capital_fin": 15922.77,
+      "cb_activo": false
+    },
+    {
+      "semana": 136,
+      "inicio": "2025-12-08",
+      "fin": "2025-12-15",
+      "trades": 32,
+      "ganadas": 9,
+      "win_rate": 0.281,
+      "profit_factor": 0.772,
+      "pnl_total": -1299.4931,
+      "capital_fin": 14623.28,
+      "cb_activo": true
+    },
+    {
+      "semana": 137,
+      "inicio": "2025-12-15",
+      "fin": "2025-12-22",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 14823.28,
+      "cb_activo": true
+    },
+    {
+      "semana": 138,
+      "inicio": "2025-12-22",
+      "fin": "2025-12-29",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 14823.28,
+      "cb_activo": true
+    },
+    {
+      "semana": 139,
+      "inicio": "2025-12-29",
+      "fin": "2026-01-05",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 14823.28,
+      "cb_activo": true
+    },
+    {
+      "semana": 140,
+      "inicio": "2026-01-05",
+      "fin": "2026-01-12",
+      "trades": 6,
+      "ganadas": 2,
+      "win_rate": 0.333,
+      "profit_factor": 0.989,
+      "pnl_total": -10.1041,
+      "capital_fin": 14813.17,
+      "cb_activo": false
+    },
+    {
+      "semana": 141,
+      "inicio": "2026-01-12",
+      "fin": "2026-01-19",
+      "trades": 18,
+      "ganadas": 9,
+      "win_rate": 0.5,
+      "profit_factor": 1.927,
+      "pnl_total": 2053.9929,
+      "capital_fin": 17067.17,
+      "cb_activo": false
+    },
+    {
+      "semana": 142,
+      "inicio": "2026-01-19",
+      "fin": "2026-01-26",
+      "trades": 26,
+      "ganadas": 9,
+      "win_rate": 0.346,
+      "profit_factor": 1.047,
+      "pnl_total": 203.4742,
+      "capital_fin": 17270.64,
+      "cb_activo": false
+    },
+    {
+      "semana": 143,
+      "inicio": "2026-01-26",
+      "fin": "2026-02-02",
+      "trades": 25,
+      "ganadas": 15,
+      "win_rate": 0.6,
+      "profit_factor": 2.937,
+      "pnl_total": 5794.5324,
+      "capital_fin": 23065.17,
+      "cb_activo": false
+    },
+    {
+      "semana": 144,
+      "inicio": "2026-02-02",
+      "fin": "2026-02-09",
+      "trades": 28,
+      "ganadas": 7,
+      "win_rate": 0.25,
+      "profit_factor": 0.661,
+      "pnl_total": -2459.9403,
+      "capital_fin": 20605.23,
+      "cb_activo": true
+    },
+    {
+      "semana": 145,
+      "inicio": "2026-02-09",
+      "fin": "2026-02-16",
+      "trades": 2,
+      "ganadas": 2,
+      "win_rate": 1.0,
+      "profit_factor": 99.0,
+      "pnl_total": 1248.3109,
+      "capital_fin": 22053.54,
+      "cb_activo": false
+    },
+    {
+      "semana": 146,
+      "inicio": "2026-02-16",
+      "fin": "2026-02-23",
+      "trades": 5,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -1639.1278,
+      "capital_fin": 20414.41,
+      "cb_activo": true
+    },
+    {
+      "semana": 147,
+      "inicio": "2026-02-23",
+      "fin": "2026-03-02",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 20414.41,
+      "cb_activo": true
+    },
+    {
+      "semana": 148,
+      "inicio": "2026-03-02",
+      "fin": "2026-03-09",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 20414.41,
+      "cb_activo": true
+    },
+    {
+      "semana": 149,
+      "inicio": "2026-03-09",
+      "fin": "2026-03-16",
+      "trades": 8,
+      "ganadas": 1,
+      "win_rate": 0.125,
+      "profit_factor": 0.269,
+      "pnl_total": -1535.7011,
+      "capital_fin": 19078.71,
+      "cb_activo": true
+    },
+    {
+      "semana": 150,
+      "inicio": "2026-03-16",
+      "fin": "2026-03-23",
+      "trades": 22,
+      "ganadas": 10,
+      "win_rate": 0.455,
+      "profit_factor": 1.644,
+      "pnl_total": 2277.3367,
+      "capital_fin": 21356.05,
+      "cb_activo": false
+    },
+    {
+      "semana": 151,
+      "inicio": "2026-03-23",
+      "fin": "2026-03-30",
+      "trades": 32,
+      "ganadas": 12,
+      "win_rate": 0.375,
+      "profit_factor": 1.159,
+      "pnl_total": 1127.9276,
+      "capital_fin": 22483.98,
+      "cb_activo": false
+    },
+    {
+      "semana": 152,
+      "inicio": "2026-03-30",
+      "fin": "2026-04-06",
+      "trades": 6,
+      "ganadas": 1,
+      "win_rate": 0.167,
+      "profit_factor": 0.394,
+      "pnl_total": -1006.7947,
+      "capital_fin": 21477.18,
+      "cb_activo": true
+    },
+    {
+      "semana": 153,
+      "inicio": "2026-04-06",
+      "fin": "2026-04-13",
+      "trades": 2,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -644.1712,
+      "capital_fin": 20833.01,
+      "cb_activo": true
+    },
+    {
+      "semana": 154,
+      "inicio": "2026-04-13",
+      "fin": "2026-04-20",
+      "trades": 9,
+      "ganadas": 2,
+      "win_rate": 0.222,
+      "profit_factor": 0.564,
+      "pnl_total": -988.2067,
+      "capital_fin": 20044.81,
+      "cb_activo": true
+    },
+    {
+      "semana": 155,
+      "inicio": "2026-04-20",
+      "fin": "2026-04-27",
+      "trades": 0,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": 0,
+      "capital_fin": 20044.81,
+      "cb_activo": true
+    },
+    {
+      "semana": 156,
+      "inicio": "2026-04-27",
+      "fin": "2026-05-04",
+      "trades": 3,
+      "ganadas": 0,
+      "win_rate": 0.0,
+      "profit_factor": 0.0,
+      "pnl_total": -888.5522,
+      "capital_fin": 19156.25,
+      "cb_activo": false
+    }
+  ]
+}

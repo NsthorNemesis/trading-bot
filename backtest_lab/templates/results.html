@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Resultados — Backtest Lab{% endblock %}
+{% block head %}
+<style>
+  .metric-card.green  { background: #052e16; border: 1px solid #166534; }
+  .metric-card.red    { background: #450a0a; border: 1px solid #991b1b; }
+  .metric-card.blue   { background: #0c1a3a; border: 1px solid #1e40af; }
+  .metric-card.gray   { background: #1a1d27; border: 1px solid #2d3148; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-4 gap-3">
+  <a href="/" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Nuevo backtest</a>
+  <h5 class="mb-0">
+    {% if r %}
+      Resultados — {{ r.fecha_inicio }} → {{ r.fecha_fin }}
+      <span class="badge bg-secondary ms-2 fw-normal small">{{ ', '.join(r.pares_sel) }}</span>
+    {% else %}
+      Error
+    {% endif %}
+  </h5>
+</div>
+
+{% if error %}
+<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}</div>
+{% else %}
+
+<!-- Métricas principales -->
+<div class="row g-3 mb-4">
+  {% set roi_cls = "green" if r.roi >= 0 else "red" %}
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="metric-card {{ roi_cls }}">
+      <div class="metric-val {% if r.roi >= 0 %}text-green{% else %}text-red{% endif %}">
+        {{ "%+.1f"|format(r.roi) }}%
+      </div>
+      <div class="metric-lbl">ROI</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="metric-card {% if r.wr >= breakeven %}green{% else %}red{% endif %}">
+      <div class="metric-val {% if r.wr >= breakeven %}text-green{% else %}text-red{% endif %}">
+        {{ "%.1f"|format(r.wr) }}%
+      </div>
+      <div class="metric-lbl">Win Rate <span class="opacity-60">(BE {{ breakeven }}%)</span></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="metric-card {% if r.dd <= 20 %}green{% elif r.dd <= 35 %}gray{% else %}red{% endif %}">
+      <div class="metric-val {% if r.dd <= 20 %}text-green{% elif r.dd <= 35 %}text-blue{% else %}text-red{% endif %}">
+        {{ "%.1f"|format(r.dd) }}%
+      </div>
+      <div class="metric-lbl">Max Drawdown</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="metric-card blue">
+      <div class="metric-val text-blue">{{ r.trades }}</div>
+      <div class="metric-lbl">Trades <span class="opacity-60">({{ r.wins }}W / {{ r.losses }}L)</span></div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="metric-card {% if r.profit_factor >= 1.3 %}green{% elif r.profit_factor >= 1.0 %}gray{% else %}red{% endif %}">
+      <div class="metric-val {% if r.profit_factor >= 1.3 %}text-green{% elif r.profit_factor >= 1.0 %}text-blue{% else %}text-red{% endif %}">
+        {{ "%.2f"|format(r.profit_factor) }}x
+      </div>
+      <div class="metric-lbl">Profit Factor</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3 col-xl-2">
+    <div class="metric-card {% if r.calmar >= 1.5 %}green{% else %}gray{% endif %}">
+      <div class="metric-val text-blue">${{ "%.2f"|format(r.capital) }}</div>
+      <div class="metric-lbl">Capital final <span class="opacity-60">(${{ "%.0f"|format(r.config.capital_ini) }} inicial)</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Equity Curve -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between">
+    <span><i class="bi bi-graph-up me-2"></i>Equity Curve</span>
+    {% if r.apr_rate %}
+    <span class="text-muted small">DS aprobación: {{ r.apr_rate }}%</span>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <canvas id="equityChart" height="80"></canvas>
+  </div>
+</div>
+
+<!-- Desglose por estrategia y por par -->
+<div class="row g-4 mb-4">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-bar-chart me-2"></i>Por estrategia</div>
+      <div class="card-body p-0">
+        <table class="table table-dark table-sm mb-0">
+          <thead><tr><th>Estrategia</th><th>Trades</th><th>WR</th><th>PnL</th></tr></thead>
+          <tbody>
+            {% for est, dat in r.by_strategy.items() %}
+            <tr>
+              <td class="text-blue fw-semibold">{{ est }}</td>
+              <td>{{ dat.trades }}</td>
+              <td class="{% if dat.wr >= breakeven %}text-green{% else %}text-red{% endif %}">{{ dat.wr }}%</td>
+              <td class="{% if dat.pnl >= 0 %}text-green{% else %}text-red{% endif %}">${{ "%+.2f"|format(dat.pnl) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted text-center py-3">Sin trades</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-pie-chart me-2"></i>Por par</div>
+      <div class="card-body p-0">
+        <table class="table table-dark table-sm mb-0">
+          <thead><tr><th>Par</th><th>Trades</th><th>WR</th><th>PnL</th></tr></thead>
+          <tbody>
+            {% for par, dat in r.by_pair.items() %}
+            <tr>
+              <td class="fw-semibold">{{ par.replace('_','/') }}</td>
+              <td>{{ dat.trades }}</td>
+              <td class="{% if dat.wr >= breakeven %}text-green{% else %}text-red{% endif %}">{{ dat.wr }}%</td>
+              <td class="{% if dat.pnl >= 0 %}text-green{% else %}text-red{% endif %}">${{ "%+.2f"|format(dat.pnl) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted text-center py-3">Sin trades</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tabla de trades -->
+{% if trades %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between">
+    <span><i class="bi bi-list-ul me-2"></i>Trades ({{ r.trades }} total{% if r.trades > 500 %}, mostrando 500{% endif %})</span>
+  </div>
+  <div class="card-body p-0" style="max-height:420px;overflow-y:auto">
+    <table class="table table-dark table-sm table-hover mb-0">
+      <thead style="position:sticky;top:0;background:#1f2336">
+        <tr>
+          <th>#</th><th>Par</th><th>Dir</th><th>Estrategia</th>
+          <th>Entry</th><th>Resultado</th><th>PnL</th>
+          <th>Apertura</th><th>Cierre</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in trades %}
+        <tr>
+          <td class="text-muted small">{{ loop.index }}</td>
+          <td class="fw-semibold">{{ t.par.replace('_','/') }}</td>
+          <td>
+            {% if t.dir == 'long' %}
+            <span class="badge bg-success bg-opacity-25 text-success">▲ LONG</span>
+            {% else %}
+            <span class="badge bg-danger bg-opacity-25 text-danger">▼ SHORT</span>
+            {% endif %}
+          </td>
+          <td class="text-blue small">{{ t.estrat }}</td>
+          <td class="small">{{ "%.5f"|format(t.entry) }}</td>
+          <td>
+            {% if t.resultado == 'TP' %}
+            <span class="badge badge-win">✅ TP</span>
+            {% else %}
+            <span class="badge badge-loss">❌ SL</span>
+            {% endif %}
+          </td>
+          <td class="{% if t.pnl >= 0 %}text-green{% else %}text-red{% endif %} fw-semibold">
+            ${{ "%+.4f"|format(t.pnl) }}
+          </td>
+          <td class="text-muted small">{{ t.opened_at[:16] if t.opened_at else '—' }}</td>
+          <td class="text-muted small">{{ t.closed_at[:16] if t.closed_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const labels = {{ eq_labels | safe }};
+const values = {{ eq_values | safe }};
+const capital_ini = {{ r.config.capital_ini if r else 200 }};
+
+const ctx = document.getElementById("equityChart");
+if (ctx && labels.length > 1) {
+  const gradient = ctx.getContext("2d").createLinearGradient(0, 0, 0, 300);
+  gradient.addColorStop(0, "rgba(59,130,246,0.3)");
+  gradient.addColorStop(1, "rgba(59,130,246,0.0)");
+
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "Capital ($)",
+        data: values,
+        borderColor: "#3b82f6",
+        backgroundColor: gradient,
+        borderWidth: 2,
+        pointRadius: values.length > 200 ? 0 : 2,
+        fill: true,
+        tension: 0.3,
+      }, {
+        label: "Capital inicial",
+        data: Array(labels.length).fill(capital_ini),
+        borderColor: "rgba(100,116,139,0.4)",
+        borderDash: [6,4],
+        borderWidth: 1,
+        pointRadius: 0,
+        fill: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { labels: { color: "#94a3b8", font: { size: 12 } } },
+        tooltip: {
+          backgroundColor: "#1f2336",
+          borderColor: "#2d3148",
+          borderWidth: 1,
+          titleColor: "#e2e8f0",
+          bodyColor: "#94a3b8",
+          callbacks: {
+            label: ctx => ` $${ctx.parsed.y.toFixed(2)}`,
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: "#64748b", maxTicksLimit: 10, font: { size: 11 } }, grid: { color: "#1f2336" } },
+        y: { ticks: { color: "#64748b", callback: v => `$${v}` }, grid: { color: "#2d3148" } },
+      }
+    }
+  });
+} else if (ctx) {
+  ctx.parentElement.innerHTML = '<p class="text-muted text-center py-4">Sin datos suficientes para la equity curve</p>';
+}
+</script>
+{% endblock %}

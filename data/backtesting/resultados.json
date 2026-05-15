@@ -1,0 +1,227 @@
+[
+  {
+    "estrategia": "Hammer",
+    "par": "EUR_USD",
+    "trades": 761,
+    "wr": 0.321,
+    "pf": 0.87,
+    "pnl": -286.5969,
+    "max_dd": 29.43
+  },
+  {
+    "estrategia": "Doji",
+    "par": "EUR_USD",
+    "trades": 3708,
+    "wr": 0.336,
+    "pf": 0.917,
+    "pnl": -583.5388,
+    "max_dd": 64.51
+  },
+  {
+    "estrategia": "Engulfing",
+    "par": "EUR_USD",
+    "trades": 4910,
+    "wr": 0.336,
+    "pf": 0.935,
+    "pnl": -696.4668,
+    "max_dd": 71.76
+  },
+  {
+    "estrategia": "RSI_Divergence",
+    "par": "EUR_USD",
+    "trades": 3767,
+    "wr": 0.337,
+    "pf": 0.928,
+    "pnl": -589.6355,
+    "max_dd": 63.28
+  },
+  {
+    "estrategia": "RSI_Bollinger",
+    "par": "EUR_USD",
+    "trades": 2684,
+    "wr": 0.349,
+    "pf": 0.984,
+    "pnl": -138.9376,
+    "max_dd": 48.34
+  },
+  {
+    "estrategia": "Hammer",
+    "par": "USD_JPY",
+    "trades": 1139,
+    "wr": 0.349,
+    "pf": 0.971,
+    "pnl": -98.0679,
+    "max_dd": 30.64
+  },
+  {
+    "estrategia": "Doji",
+    "par": "USD_JPY",
+    "trades": 5939,
+    "wr": 0.363,
+    "pf": 1.029,
+    "pnl": 714.0692,
+    "max_dd": 31.23
+  },
+  {
+    "estrategia": "Engulfing",
+    "par": "USD_JPY",
+    "trades": 7683,
+    "wr": 0.346,
+    "pf": 0.964,
+    "pnl": -667.273,
+    "max_dd": 71.64
+  },
+  {
+    "estrategia": "RSI_Divergence",
+    "par": "USD_JPY",
+    "trades": 5966,
+    "wr": 0.334,
+    "pf": 0.882,
+    "pnl": -846.6962,
+    "max_dd": 87.82
+  },
+  {
+    "estrategia": "RSI_Bollinger",
+    "par": "USD_JPY",
+    "trades": 4283,
+    "wr": 0.33,
+    "pf": 0.894,
+    "pnl": -795.3066,
+    "max_dd": 81.87
+  },
+  {
+    "estrategia": "Hammer",
+    "par": "USD_CHF",
+    "trades": 1213,
+    "wr": 0.342,
+    "pf": 0.947,
+    "pnl": -190.2457,
+    "max_dd": 33.5
+  },
+  {
+    "estrategia": "Doji",
+    "par": "USD_CHF",
+    "trades": 5835,
+    "wr": 0.336,
+    "pf": 0.912,
+    "pnl": -788.3122,
+    "max_dd": 79.02
+  },
+  {
+    "estrategia": "Engulfing",
+    "par": "USD_CHF",
+    "trades": 7634,
+    "wr": 0.34,
+    "pf": 0.927,
+    "pnl": -791.2228,
+    "max_dd": 83.42
+  },
+  {
+    "estrategia": "RSI_Divergence",
+    "par": "USD_CHF",
+    "trades": 5722,
+    "wr": 0.344,
+    "pf": 0.953,
+    "pnl": -587.3696,
+    "max_dd": 64.47
+  },
+  {
+    "estrategia": "RSI_Bollinger",
+    "par": "USD_CHF",
+    "trades": 4036,
+    "wr": 0.359,
+    "pf": 1.01,
+    "pnl": 216.844,
+    "max_dd": 48.07
+  },
+  {
+    "estrategia": "Hammer",
+    "par": "AUD_USD",
+    "trades": 1283,
+    "wr": 0.348,
+    "pf": 0.964,
+    "pnl": -132.7302,
+    "max_dd": 25.65
+  },
+  {
+    "estrategia": "Doji",
+    "par": "AUD_USD",
+    "trades": 5815,
+    "wr": 0.338,
+    "pf": 0.932,
+    "pnl": -763.73,
+    "max_dd": 80.88
+  },
+  {
+    "estrategia": "Engulfing",
+    "par": "AUD_USD",
+    "trades": 7734,
+    "wr": 0.339,
+    "pf": 0.932,
+    "pnl": -847.24,
+    "max_dd": 85.58
+  },
+  {
+    "estrategia": "RSI_Divergence",
+    "par": "AUD_USD",
+    "trades": 5800,
+    "wr": 0.354,
+    "pf": 0.988,
+    "pnl": -156.9099,
+    "max_dd": 55.43
+  },
+  {
+    "estrategia": "RSI_Bollinger",
+    "par": "AUD_USD",
+    "trades": 4115,
+    "wr": 0.347,
+    "pf": 0.951,
+    "pnl": -423.9452,
+    "max_dd": 54.93
+  },
+  {
+    "estrategia": "Hammer",
+    "par": "USD_CAD",
+    "trades": 1140,
+    "wr": 0.345,
+    "pf": 0.953,
+    "pnl": -153.9032,
+    "max_dd": 29.3
+  },
+  {
+    "estrategia": "Doji",
+    "par": "USD_CAD",
+    "trades": 5847,
+    "wr": 0.338,
+    "pf": 0.939,
+    "pnl": -749.7402,
+    "max_dd": 80.53
+  },
+  {
+    "estrategia": "Engulfing",
+    "par": "USD_CAD",
+    "trades": 7574,
+    "wr": 0.337,
+    "pf": 0.912,
+    "pnl": -846.2554,
+    "max_dd": 86.04
+  },
+  {
+    "estrategia": "RSI_Divergence",
+    "par": "USD_CAD",
+    "trades": 5738,
+    "wr": 0.358,
+    "pf": 1.013,
+    "pnl": 181.4576,
+    "max_dd": 48.68
+  },
+  {
+    "estrategia": "RSI_Bollinger",
+    "par": "USD_CAD",
+    "trades": 4075,
+    "wr": 0.361,
+    "pf": 1.033,
+    "pnl": 426.6526,
+    "max_dd": 31.02
+  }
+]

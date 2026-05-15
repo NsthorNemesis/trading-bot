@@ -100,5 +100,6 @@
 - [x] ✅ SSH root@24.199.87.217 funcionando desde PowerShell — 2026-05-15
 - [x] ✅ Repo GitHub inicializado local, commit subido (rama master) — 2026-05-15
 - [x] ✅ Sincronizar config VPS con config local validada (cooldown 45min, riesgo 2%, max_pos 10, max_pos_par 3) — 2026-05-15
-- [ ] Sincronizar VPS con GitHub (git pull en /root/trading_bot_v11)
+- [x] ✅ Sincronizar VPS con GitHub — 2026-05-15 | commit 74ff64d | `git fetch + reset --hard origin/master`
+- Nota técnica: VPS modifica archivos fuera de git (via SSH pipe), usar siempre `reset --hard` en lugar de `git pull` para evitar conflictos
 - [ ] Descargar datos históricos 2023-2026 para backtest largo

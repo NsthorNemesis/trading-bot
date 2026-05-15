@@ -1,0 +1,15 @@
+﻿venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.duckdb
+logs/
+backups/
+data/uploads/
+data/historical/
+*.log
+.DS_Store
+deploy_key
+docs/Obsidian/

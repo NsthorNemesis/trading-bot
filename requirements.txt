@@ -1,0 +1,21 @@
+# Trading Bot v11 — dependencias
+# Instalar con: pip install -r requirements.txt
+
+# Datos y cálculo
+pandas>=2.0
+numpy>=1.24
+ta>=0.11.0
+
+# APIs
+openai>=1.0          # cliente DeepSeek (compatible OpenAI)
+requests>=2.28       # HTTP (dependencia de oandapyV20)
+oandapyV20>=0.7.2    # broker OANDA
+httpx>=0.24          # HTTP async (AuditAgent)
+tenacity>=8.0        # retry automático
+
+# Utilidades
+python-dotenv>=1.0   # cargar .env
+schedule>=1.2        # tareas programadas (AuditAgent)
+
+# Telegram (opcional — solo si usas notificaciones)
+python-telegram-bot>=20.0
