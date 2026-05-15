@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Backtest Lab{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root { --accent: #0d6efd; }
+    body  { background: #0f1117; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; }
+    .navbar { background: #1a1d27 !important; border-bottom: 1px solid #2d3148; }
+    .navbar-brand { font-weight: 700; color: #60a5fa !important; letter-spacing: .5px; }
+    .card { background: #1a1d27; border: 1px solid #2d3148; border-radius: 12px; }
+    .card-header { background: #1f2336; border-bottom: 1px solid #2d3148; font-weight: 600; }
+    .form-control, .form-select { background: #0f1117; border-color: #2d3148; color: #e2e8f0; }
+    .form-label, .form-check-label { color: #e2e8f0 !important; }
+    .text-muted { color: #94a3b8 !important; }
+    .form-control:focus, .form-select:focus { background: #0f1117; border-color: #60a5fa; color: #e2e8f0; box-shadow: 0 0 0 .2rem rgba(96,165,250,.25); }
+    .form-check-input:checked { background-color: #3b82f6; border-color: #3b82f6; }
+    .badge-win  { background: #065f46; color: #6ee7b7; }
+    .badge-loss { background: #7f1d1d; color: #fca5a5; }
+    .metric-card { border-radius: 10px; padding: 1rem 1.25rem; }
+    .metric-val  { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+    .metric-lbl  { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: #cbd5e1; margin-top: .2rem; }
+    .table-dark  { --bs-table-bg: #1a1d27; --bs-table-border-color: #2d3148; }
+    .table-dark thead th { color: #60a5fa; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; }
+    .btn-primary { background: #3b82f6; border-color: #3b82f6; }
+    .btn-primary:hover { background: #2563eb; border-color: #2563eb; }
+    .text-green  { color: #34d399 !important; }
+    .text-red    { color: #f87171 !important; }
+    .text-blue   { color: #60a5fa !important; }
+    .section-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .1em; color: #60a5fa; margin-bottom: .75rem; }
+    a { color: #60a5fa; } a:hover { color: #93c5fd; }
+    .nav-link { color: #cbd5e1 !important; } .nav-link:hover, .nav-link.active { color: #ffffff !important; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1a1d27; }
+    ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 3px; }
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark mb-4">
+  <div class="container-fluid px-4">
+    <a class="navbar-brand" href="/"><i class="bi bi-activity me-2"></i>Backtest Lab</a>
+    <div class="collapse navbar-collapse">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item"><a class="nav-link {% if request.path=='/' %}active{% endif %}" href="/">Backtest</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.path=='/datos' %}active{% endif %}" href="/datos">Datos</a></li>
+      </ul>
+      <span class="text-muted small"><i class="bi bi-circle-fill text-success me-1" style="font-size:.5rem"></i>Trading Bot v11</span>
+    </div>
+  </div>
+</nav>
+<div class="container-fluid px-4">
+  {% block content %}{% endblock %}
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "_comentario": "Config validada backtest 2026-05-14. RSI_Bollinger. AUD_USD+NZD_USD. Cooldown 240min. WR=48.6% PnL=+$54.51 (37 trades, 3.5 semanas).",
+  "_historial": "Anterior: RSI_Bollinger+RSI_Divergence | GBP_USD+USD_CAD+AUD_USD | cooldown 15min",
+  "signal_timeframe": "M15",
+  "estrategias_activas": [
+    "RSI_Bollinger"
+  ],
+  "estrategias_pausadas": [
+    "RSI_Divergence",
+    "EMA_Crossover",
+    "Hammer",
+    "Doji",
+    "Engulfing"
+  ],
+  "pares_activos": [
+    "AUD_USD",
+    "NZD_USD"
+  ],
+  "pares_pausados": [
+    "EUR_USD",
+    "GBP_USD",
+    "USD_JPY",
+    "USD_CHF",
+    "USD_CAD",
+    "EUR_GBP"
+  ],
+  "sl_atr_mult": 2.0,
+  "min_sl_pips": 10,
+  "max_sl_pips": 50,
+  "rr_ratio": 2.0,
+  "rsi_low": 30,
+  "rsi_high": 70,
+  "min_win_rate": 0.34,
+  "min_confidence": 0.40,
+  "sesiones_activas": [
+    "london",
+    "new_york"
+  ],
+  "sesiones_pausadas": [
+    "overlap"
+  ],
+  "cooldown_minutes": 240,
+  "max_posiciones": 4,
+  "riesgo_pct": 0.015,
+  "max_drawdown_dia": 0.04,
+  "circuit_breaker_pct": 0.15
+}
