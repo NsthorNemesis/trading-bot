@@ -28,7 +28,35 @@
 - **EUR/GBP descartado**: WR 33.3%, arrastra el portfolio
 - **AUD/USD**: mejor par (55-58.8% WR)
 - **NZD/USD**: segundo mejor (41.2% WR), se ve afectado negativamente con EUR/GBP en el mix
-- **Config óptima validada**: RSI_Bollinger | AUD_USD + NZD_USD | cooldown 240 min
+- **Config óptima inicial**: RSI_Bollinger | AUD_USD + NZD_USD | cooldown 240 min
+
+### ✅ Backtest adicional: cooldown 45 min (período: Apr 15 – May 13 2026)
+| Config | Trades | WR | PnL |
+|---|---|---|---|
+| AUD+NZD cooldown 240min | 37 | 48.6% | +$54.51 |
+| **AUD+NZD cooldown 45min** | **51** | **49.0%** | **+$81.14** |
+
+- **AUD/USD con 45min**: 24 trades, WR 50.0%, +$39.76
+- **NZD/USD con 45min**: 27 trades, WR 48.1%, +$41.38
+- **Veredicto**: 45 min supera a 240 min en todos los indicadores (+38% trades, +49% PnL, WR similar)
+- El clustering no es problema con 45 min: máximo 2-3 trades del mismo par en 2 horas
+- **Config óptima actualizada**: RSI_Bollinger | AUD_USD + NZD_USD | cooldown **45 min**
+- `strategy_params.json` actualizado local: `cooldown_minutes: 240 → 45`
+
+### ✅ Backtest adicional: riesgo 2% + max_pos 10 + max_pos_par 3 (período: Apr 15 – May 13 2026)
+| Config | Trades | WR | PnL |
+|---|---|---|---|
+| cooldown 45min, riesgo 1.5%, max_pos 4, max_pos_par 2 | 51 | 49.0% | +$81.14 |
+| **cooldown 45min, riesgo 2.0%, max_pos 10, max_pos_par 3** | **62** | **50.0%** | **+$106.47** |
+
+- **AUD/USD**: 28 trades, WR 57.1%, +$71.73 — sólido
+- **NZD/USD**: 34 trades, WR 44.1%, +$34.75 — cumple
+- Cambios clave: riesgo_pct 1.5%→2.0%, max_posiciones 4→10, max_pos_par 2→3
+- Nota de riesgo: con 2% y max_pos_par 3, un día adverso como el 30-abr puede acumular más pérdidas simultáneas — el circuit_breaker_pct 15% y max_drawdown_dia 4% son la red de seguridad
+- **Config óptima final (sesión 2026-05-15)**: RSI_Bollinger | AUD_USD+NZD_USD | cooldown 45min | riesgo 2% | max_pos 10 | max_pos_par 3
+- `strategy_params.json` actualizado local ✅
+- **VPS actualizado** ✅ — aplicado vía pipe SSH (`$json | ssh root@... "cat > ..."`) — 2026-05-15
+- Nota técnica: el método `ssh ... "python3 -c \"...\"` falla en PowerShell por conflicto de comillas. Usar siempre pipe con here-string `@'...'@`
 
 ---
 
@@ -67,7 +95,10 @@
 ---
 
 ## Pendientes
-- [ ] Aplicar strategy_params.json validado en VPS
+- [x] ✅ Aplicar strategy_params.json validado en VPS — 2026-05-15 03:36 UTC
 - [x] ✅ Corregir main.py local (código duplicado líneas 273-283) — 2026-05-15
-- [ ] Habilitar SSH con contraseña desde PowerShell
+- [x] ✅ SSH root@24.199.87.217 funcionando desde PowerShell — 2026-05-15
+- [x] ✅ Repo GitHub inicializado local, commit subido (rama master) — 2026-05-15
+- [x] ✅ Sincronizar config VPS con config local validada (cooldown 45min, riesgo 2%, max_pos 10, max_pos_par 3) — 2026-05-15
+- [ ] Sincronizar VPS con GitHub (git pull en /root/trading_bot_v11)
 - [ ] Descargar datos históricos 2023-2026 para backtest largo
