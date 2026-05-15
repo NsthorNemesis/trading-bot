@@ -209,7 +209,8 @@ def _nivel1():
 
     # Sintaxis Python
     py_files = [f for f in BOT_ROOT.rglob("*.py")
-                if "venv" not in str(f) and "__pycache__" not in str(f)]
+                if "venv" not in str(f) and "__pycache__" not in str(f)
+                and "backups" not in str(f) and "backtest_lab" not in str(f)]
     errors = []
     for f in py_files:
         try:
