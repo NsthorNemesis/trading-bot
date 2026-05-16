@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, jsonify, redirect, render_template, request, url_for, Response, stream_with_context
 
 from database import get_candles, get_coverage, get_db_size_mb, init_db
 from downloader import descargar_oanda, importar_carpeta_histdata, importar_histdata_csv
@@ -532,6 +532,189 @@ def health_run():
         "summary": {"passed": passed, "warned": warned, "failed": failed},
         "checks": checks
     })
+
+
+# ── Monitor en Vivo ────────────────────────────────────────────────────────────
+import re as _re
+
+def _parse_log_ts(line):
+    m = _re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', line or "")
+    if m:
+        try:
+            return datetime.strptime(m.group(1), '%Y-%m-%d %H:%M:%S')
+        except Exception:
+            pass
+    return None
+
+def _time_ago(ts):
+    if ts is None:
+        return "—"
+    secs = int((datetime.utcnow() - ts).total_seconds())
+    if secs < 0:    return "ahora"
+    if secs < 60:   return f"hace {secs}s"
+    if secs < 3600: return f"hace {secs//60}m {secs%60}s"
+    if secs < 86400:return f"hace {secs//3600}h {(secs%3600)//60}m"
+    return f"hace {secs//86400}d"
+
+def _monitor_fetch():
+    LOG = "/root/trading_bot_v11/logs/trading_bot.log"
+    cmd = (
+        "echo '|||SVC|||'; systemctl is-active trading_bot 2>&1; "
+        f"echo '|||STRAT|||'; grep 'Estrategias cargadas' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||WATCH|||'; grep 'monitoreando strategy_params' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||OANDA|||'; grep 'oandapyV20' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||CICLO|||'; grep 'Parametros:' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||TRADE|||'; grep 'TRADE OK\\|TP.*PnL\\|cerrado.*TP\\|cerrado.*SL' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||ERR|||'; tail -200 {LOG} 2>/dev/null | grep '\\[ERROR\\]' | grep -cv 'telegram' || echo 0; "
+        f"echo '|||DS|||'; grep -i 'deepseek\\|DeepSeek' {LOG} 2>/dev/null | tail -1"
+    )
+    raw, rc = _ssh(cmd, timeout=12)
+
+    sections = {}
+    current = "_pre"
+    for line in raw.splitlines():
+        if line.startswith("|||") and line.endswith("|||"):
+            current = line.strip("|")
+            sections[current] = ""
+        else:
+            sections[current] = (sections.get(current, "") + "\n" + line).strip()
+
+    items = []
+
+    # 1. Servicio
+    svc = sections.get("SVC", "").strip()
+    ok  = "active" in svc and rc != -1
+    items.append({"label": "Servicio activo", "icon": "bi-cpu-fill",
+                  "status": "ok" if ok else ("timeout" if rc == -1 else "error"),
+                  "detail": svc or "No se pudo conectar al VPS",
+                  "ago": ""})
+
+    # 2. Estrategias
+    strat = sections.get("STRAT", "").strip()
+    ts    = _parse_log_ts(strat)
+    m     = _re.search(r"Estrategias cargadas: (.+)$", strat)
+    strat_val = m.group(1) if m else (strat[-80:] if strat else "Sin datos")
+    items.append({"label": "Estrategias cargadas", "icon": "bi-puzzle-fill",
+                  "status": "ok" if strat and "[]" not in strat else "error",
+                  "detail": strat_val, "ago": _time_ago(ts)})
+
+    # 3. ParamsWatcher
+    watch = sections.get("WATCH", "").strip()
+    ts    = _parse_log_ts(watch)
+    items.append({"label": "ParamsWatcher activo", "icon": "bi-eye-fill",
+                  "status": "ok" if watch else "warn",
+                  "detail": watch[-90:] if watch else "No detectado en el log",
+                  "ago": _time_ago(ts)})
+
+    # 4. OANDA
+    oanda = sections.get("OANDA", "").strip()
+    ts    = _parse_log_ts(oanda)
+    ago_s = int((datetime.utcnow() - ts).total_seconds()) if ts else 9999
+    oanda_d = _re.sub(r'.*performing request ', '', oanda)[:80] if oanda else "Sin datos"
+    items.append({"label": "OANDA — último ping", "icon": "bi-broadcast",
+                  "status": "ok" if ts and ago_s < 300 else ("warn" if ts and ago_s < 900 else "error"),
+                  "detail": oanda_d, "ago": _time_ago(ts)})
+
+    # 5. Ciclo señales
+    ciclo = sections.get("CICLO", "").strip()
+    ts    = _parse_log_ts(ciclo)
+    ago_s = int((datetime.utcnow() - ts).total_seconds()) if ts else 9999
+    ciclo_d = _re.sub(r'.*Parametros: ', '', ciclo)[:90] if ciclo else "Sin datos"
+    items.append({"label": "Ciclo de señales", "icon": "bi-graph-up-arrow",
+                  "status": "ok" if ts and ago_s < 1800 else ("warn" if ts and ago_s < 3600 else "error"),
+                  "detail": ciclo_d, "ago": _time_ago(ts)})
+
+    # 6. Último trade
+    trade = sections.get("TRADE", "").strip()
+    ts    = _parse_log_ts(trade)
+    items.append({"label": "Último trade ejecutado", "icon": "bi-arrow-left-right",
+                  "status": "ok" if trade else "neutral",
+                  "detail": trade[-90:] if trade else "Ninguno en el log actual",
+                  "ago": _time_ago(ts) if ts else "—"})
+
+    # 7. Errores recientes
+    try:
+        n_err = int(sections.get("ERR", "0").strip().split()[0])
+    except Exception:
+        n_err = -1
+    items.append({"label": "Errores recientes (bot)", "icon": "bi-shield-exclamation",
+                  "status": "ok" if n_err == 0 else ("warn" if n_err < 5 else "error"),
+                  "detail": f"{n_err} errores no-Telegram en últimas 200 líneas" if n_err >= 0 else "No se pudo leer",
+                  "ago": ""})
+
+    # 8. DeepSeek
+    ds    = sections.get("DS", "").strip()
+    ts    = _parse_log_ts(ds)
+    items.append({"label": "DeepSeek", "icon": "bi-robot",
+                  "status": "ok" if ds else "neutral",
+                  "detail": ds[-90:] if ds else "Sin llamadas recientes en el log",
+                  "ago": _time_ago(ts) if ts else "—"})
+
+    return items
+
+@app.route("/monitor")
+def monitor_page():
+    return render_template("monitor.html")
+
+@app.route("/monitor/data")
+def monitor_data():
+    items = _monitor_fetch()
+    n_ok  = sum(1 for i in items if i["status"] == "ok")
+    n_err = sum(1 for i in items if i["status"] == "error")
+    return jsonify({
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "items": items, "n_ok": n_ok, "n_err": n_err
+    })
+
+
+# ── Harness (Simulación con Agentes Reales) ────────────────────────────────────
+
+@app.route("/harness")
+def harness_page():
+    return render_template("harness.html")
+
+@app.route("/harness/run")
+def harness_run():
+    semanas = request.args.get("semanas", "4")
+    capital = request.args.get("capital", "200")
+    par     = request.args.get("par", "").strip()
+
+    cmd = [_sys.executable, str(BOT_ROOT / "backtest_harness.py"),
+           "--semanas", semanas, "--capital", capital]
+    if par:
+        cmd += ["--par", par]
+
+    def generate():
+        cmd_str = " ".join(cmd[2:])
+        yield f"data: {json.dumps({'line': 'Iniciando harness: ' + cmd_str})}\n\n"
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, cwd=str(BOT_ROOT), bufsize=1,
+                encoding="utf-8", errors="replace"
+            )
+            for raw_line in proc.stdout:
+                line = raw_line.rstrip()
+                if line:
+                    yield f"data: {json.dumps({'line': line})}\n\n"
+            proc.wait()
+            # Intentar leer resultado JSON
+            result_file = BOT_ROOT / "data" / "backtesting" / "backtest_real_resultado.json"
+            result = {}
+            if result_file.exists():
+                try:
+                    result = json.loads(result_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            yield f"data: {json.dumps({'done': True, 'code': proc.returncode, 'result': result})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"}
+    )
 
 
 if __name__ == "__main__":

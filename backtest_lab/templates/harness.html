@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Simulación Agentes Reales — Trading Bot v11{% endblock %}
+
+{% block head %}
+<style>
+  .warn-banner {
+    background: #78350f; border: 1px solid #d97706; border-radius: 10px;
+    padding: .75rem 1.25rem; display: flex; align-items: center; gap: 10px;
+    margin-bottom: 1.25rem; font-size: .85rem; color: #fcd34d;
+  }
+  #log-panel {
+    background: #0a0c14; border: 1px solid #2d3148; border-radius: 10px;
+    padding: 1rem; height: 420px; overflow-y: auto;
+    font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: .75rem;
+    color: #cbd5e1; display: none;
+  }
+  #log-panel .log-line { margin: 0; line-height: 1.55; }
+  .log-info    { color: #94a3b8; }
+  .log-warn    { color: #fbbf24; }
+  .log-error   { color: #f87171; }
+  .log-trade   { color: #34d399; font-weight: 600; }
+  .log-signal  { color: #60a5fa; }
+  .log-deepsk  { color: #c084fc; }
+  .log-header  { color: #e2e8f0; font-weight: 700; }
+  .metric-pill {
+    background: #1f2336; border: 1px solid #2d3148; border-radius: 8px;
+    padding: .75rem 1rem; text-align: center;
+  }
+  .metric-pill .val { font-size: 1.6rem; font-weight: 700; line-height: 1; }
+  .metric-pill .lbl { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em;
+                      color: #94a3b8; margin-top: .2rem; }
+  #results-panel { display: none; }
+  #btn-run { min-width: 180px; }
+  #btn-stop { display: none; min-width: 120px; }
+  .running-indicator {
+    display: none; align-items: center; gap: 8px;
+    font-size: .8rem; color: #60a5fa;
+  }
+  .running-indicator.show { display: flex; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold text-blue"><i class="bi bi-beaker me-2"></i>Simulación con Agentes Reales</h4>
+    <div class="text-muted small mt-1">Replay histórico M1 · Agentes reales · DeepSeek real</div>
+  </div>
+  <a href="/" class="btn btn-sm btn-outline-secondary">← Backtest</a>
+</div>
+
+<!-- Advertencia -->
+<div class="warn-banner">
+  <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+  <div>
+    <strong>Usa créditos reales de DeepSeek API.</strong>
+    El harness envía señales reales a la IA para evaluación.
+    Una simulación de 4 semanas puede tardar <strong>5–15 minutos</strong>.
+  </div>
+</div>
+
+<!-- Configuración -->
+<div class="card mb-3">
+  <div class="card-header"><i class="bi bi-sliders me-2"></i>Configuración</div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Semanas de historial</label>
+        <input type="number" class="form-control" id="inp-semanas" value="4" min="1" max="52" step="1">
+        <div class="form-text text-muted">1–52 semanas (más = más lento)</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Capital inicial ($)</label>
+        <input type="number" class="form-control" id="inp-capital" value="200" min="100" max="100000" step="50">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Par específico (opcional)</label>
+        <select class="form-select" id="inp-par">
+          <option value="">Todos los pares activos</option>
+          <option value="AUD_USD">AUD/USD</option>
+          <option value="NZD_USD">NZD/USD</option>
+          <option value="EUR_USD">EUR/USD</option>
+          <option value="GBP_USD">GBP/USD</option>
+          <option value="USD_JPY">USD/JPY</option>
+          <option value="USD_CHF">USD/CHF</option>
+          <option value="USD_CAD">USD/CAD</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary flex-fill" id="btn-run" onclick="runHarness()">
+          <i class="bi bi-play-fill me-1"></i>Ejecutar Simulación
+        </button>
+        <button class="btn btn-danger" id="btn-stop" onclick="stopHarness()">
+          <i class="bi bi-stop-fill me-1"></i>Detener
+        </button>
+      </div>
+    </div>
+    <div class="running-indicator mt-3" id="running-ind">
+      <div class="spinner-border spinner-border-sm text-primary"></div>
+      <span id="running-txt">Simulando...</span>
+      <span class="text-muted" id="line-count">(0 líneas)</span>
+    </div>
+  </div>
+</div>
+
+<!-- Log Output -->
+<div class="card mb-3" id="log-card" style="display:none">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-terminal me-2"></i>Log de ejecución</span>
+    <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">Limpiar</button>
+  </div>
+  <div class="card-body p-0">
+    <div id="log-panel"></div>
+  </div>
+</div>
+
+<!-- Resultados finales -->
+<div id="results-panel">
+  <div class="card-header mb-3" style="background:#1f2336;border:1px solid #2d3148;border-radius:10px;padding:.75rem 1.25rem;">
+    <i class="bi bi-trophy me-2 text-green"></i><strong>Resultados de la Simulación</strong>
+  </div>
+  <div class="row g-3 mb-3" id="metric-pills"></div>
+  <div id="trades-table-wrap" style="display:none">
+    <div class="section-title mt-2">Trades ejecutados</div>
+    <div class="table-responsive">
+      <table class="table table-dark table-sm table-hover" id="trades-table">
+        <thead><tr>
+          <th>Par</th><th>Estrategia</th><th>Resultado</th>
+          <th>PnL ($)</th><th>Apertura</th><th>Cierre</th>
+        </tr></thead>
+        <tbody id="trades-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let evtSource = null;
+let lineCount = 0;
+
+function classifyLine(line) {
+  if (/═{5,}|BACKTEST HARNESS|RESUMEN FINAL/.test(line)) return 'log-header';
+  if (/TRADE OK|✅|🔴.*SL|TP.*PnL/.test(line))           return 'log-trade';
+  if (/SENAL|señal|conf=/.test(line))                     return 'log-signal';
+  if (/deepseek|DeepSeek/i.test(line))                    return 'log-deepsk';
+  if (/\[ERROR\]/.test(line))                             return 'log-error';
+  if (/\[WARNING\]|\[WARN\]/.test(line))                  return 'log-warn';
+  return 'log-info';
+}
+
+function appendLine(text) {
+  const panel = document.getElementById("log-panel");
+  const p = document.createElement("p");
+  p.className = "log-line " + classifyLine(text);
+  p.textContent = text;
+  panel.appendChild(p);
+  panel.scrollTop = panel.scrollHeight;
+  lineCount++;
+  document.getElementById("line-count").textContent = `(${lineCount} líneas)`;
+}
+
+function runHarness() {
+  if (evtSource) evtSource.close();
+  lineCount = 0;
+  document.getElementById("log-panel").innerHTML = "";
+  document.getElementById("log-panel").style.display = "block";
+  document.getElementById("log-card").style.display = "block";
+  document.getElementById("results-panel").style.display = "none";
+  document.getElementById("btn-run").disabled = true;
+  document.getElementById("btn-stop").style.display = "inline-flex";
+  document.getElementById("running-ind").classList.add("show");
+
+  const semanas = document.getElementById("inp-semanas").value;
+  const capital = document.getElementById("inp-capital").value;
+  const par     = document.getElementById("inp-par").value;
+  document.getElementById("running-txt").textContent =
+    `Simulando ${semanas} sem. · $${capital}${par ? ' · '+par.replace('_','/') : ''}...`;
+
+  const url = `/harness/run?semanas=${semanas}&capital=${capital}&par=${encodeURIComponent(par)}`;
+  evtSource = new EventSource(url);
+
+  evtSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.error) {
+      appendLine("⚠ ERROR: " + data.error);
+      finish(null);
+    } else if (data.done) {
+      evtSource.close();
+      evtSource = null;
+      finish(data.result || null);
+    } else if (data.line) {
+      appendLine(data.line);
+    }
+  };
+  evtSource.onerror = () => {
+    appendLine("— conexión cerrada —");
+    finish(null);
+  };
+}
+
+function stopHarness() {
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  appendLine("⏹ Simulación detenida por el usuario.");
+  finish(null);
+}
+
+function finish(result) {
+  document.getElementById("btn-run").disabled = false;
+  document.getElementById("btn-stop").style.display = "none";
+  document.getElementById("running-ind").classList.remove("show");
+  if (!result) return;
+  renderResults(result);
+}
+
+function renderResults(result) {
+  const res = result.resumen || result.metricas_globales || {};
+  const meta = result.metadata || {};
+  const trades = result.trades || [];
+
+  const cap_ini = meta.capital_inicial ?? 200;
+  const cap_fin = res.capital_final ?? 0;
+  const pnl_pct = res.pnl_pct ?? 0;
+  const wr      = (res.win_rate_global ?? 0) * 100;
+  const pf      = res.profit_factor ?? 0;
+  const dd      = res.max_drawdown_pct ?? 0;
+  const n       = res.total_trades ?? 0;
+
+  const pnl_color = pnl_pct >= 0 ? '#34d399' : '#f87171';
+
+  document.getElementById("metric-pills").innerHTML = `
+    <div class="col"><div class="metric-pill">
+      <div class="val text-blue">$${cap_fin.toFixed(2)}</div>
+      <div class="lbl">Capital Final</div>
+    </div></div>
+    <div class="col"><div class="metric-pill">
+      <div class="val" style="color:${pnl_color}">${pnl_pct >= 0 ? '+' : ''}${pnl_pct.toFixed(2)}%</div>
+      <div class="lbl">Retorno</div>
+    </div></div>
+    <div class="col"><div class="metric-pill">
+      <div class="val text-green">${n}</div>
+      <div class="lbl">Trades</div>
+    </div></div>
+    <div class="col"><div class="metric-pill">
+      <div class="val" style="color:${wr>=50?'#34d399':'#f87171'}">${wr.toFixed(1)}%</div>
+      <div class="lbl">Win Rate</div>
+    </div></div>
+    <div class="col"><div class="metric-pill">
+      <div class="val" style="color:${pf>=1?'#34d399':'#f87171'}">${pf.toFixed(2)}</div>
+      <div class="lbl">Profit Factor</div>
+    </div></div>
+    <div class="col"><div class="metric-pill">
+      <div class="val text-red">${dd.toFixed(1)}%</div>
+      <div class="lbl">Max Drawdown</div>
+    </div></div>
+  `;
+
+  if (trades.length > 0) {
+    const tbody = document.getElementById("trades-body");
+    tbody.innerHTML = "";
+    for (const t of trades.slice(0, 100)) {
+      const pnl = parseFloat(t.pnl || 0);
+      const res_txt = t.resultado || "?";
+      const cls = res_txt.includes("GANA") ? "text-green" : "text-red";
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${(t.par||t.instrument||"?").replace("_","/")}</td>
+        <td>${t.estrategia||"?"}</td>
+        <td class="${cls}">${res_txt}</td>
+        <td class="${cls}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(4)}</td>
+        <td style="font-size:.72rem">${(t.opened_at||t.openTime||"—").slice(0,16)}</td>
+        <td style="font-size:.72rem">${(t.closed_at||t.closeTime||"—").slice(0,16)}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+    document.getElementById("trades-table-wrap").style.display = "block";
+  }
+
+  document.getElementById("results-panel").style.display = "block";
+  document.getElementById("results-panel").scrollIntoView({ behavior: "smooth" });
+}
+
+function clearLog() {
+  document.getElementById("log-panel").innerHTML = "";
+  lineCount = 0;
+  document.getElementById("line-count").textContent = "(0 líneas)";
+}
+</script>
+{% endblock %}
