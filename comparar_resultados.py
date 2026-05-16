@@ -101,11 +101,11 @@ else:
             f"  {r['archivo']:33s} {r['fecha']:17s}"
             f" {str(r['cap_ini'] or '?'):>8}"
             f" {str(r['cap_fin'] or '?'):>8}"
-            f" {f\"{ret_pct:+.1f}\" if ret_pct is not None else '?':>7}"
+            f" {(f'{ret_pct:+.1f}' if ret_pct is not None else '?'):>7}"
             f" {str(r['trades'] or '?'):>7}"
-            f" {f\"{wr_pct:.1f}\" if wr_pct is not None else '?':>6}"
-            f" {f\"{r['pf']:.2f}\" if r['pf'] else '?':>5}"
-            f" {f\"{dd_pct:.1f}\" if dd_pct is not None else '?':>6}"
+            f" {(f'{wr_pct:.1f}' if wr_pct is not None else '?'):>6}"
+            f" {('{:.2f}'.format(r['pf']) if r['pf'] else '?'):>5}"
+            f" {(f'{dd_pct:.1f}' if dd_pct is not None else '?'):>6}"
         )
 
     if len(resultados) >= 2:

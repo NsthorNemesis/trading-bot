@@ -208,9 +208,9 @@ def _nivel1():
     res = []
 
     # Sintaxis Python
+    _EXCLUDE = {"venv", "__pycache__", "backups", "backtest_lab"}
     py_files = [f for f in BOT_ROOT.rglob("*.py")
-                if "venv" not in str(f) and "__pycache__" not in str(f)
-                and "backups" not in str(f) and "backtest_lab" not in str(f)]
+                if not any(part in _EXCLUDE for part in f.parts)]
     errors = []
     for f in py_files:
         try:
@@ -399,34 +399,37 @@ def _nivel3():
         res.append(_chk(3, "Servicio VPS (systemd)", "fail", out[:300],
             "ssh root@24.199.87.217 'systemctl restart trading_bot'"))
 
-    # Bug hot-reload en VPS (strategies vacías)
+    # Bug hot-reload en VPS (strategies vacías) — solo últimas 2000 líneas
     out2, _ = _ssh(
-        "grep -c 'Estrategias cargadas: \\[\\]' "
-        "/root/trading_bot_v11/logs/trading_bot.log 2>/dev/null || echo 0"
+        "tail -2000 /root/trading_bot_v11/logs/trading_bot.log 2>/dev/null "
+        "| grep -c 'Estrategias cargadas: \\[\\]' || echo 0"
     )
     try:
         n = int(out2.strip().split()[0])
         if n > 0:
             res.append(_chk(3, "Bug hot-reload en VPS", "fail",
-                f"Detectados {n} reload(s) con strategies vacías en el log — "
-                "bot lleva tiempo sin generar señales",
+                f"Detectados {n} reload(s) con strategies vacías en sesión reciente — "
+                "bot sin señales activas",
                 "Reiniciar: systemctl restart trading_bot"))
         else:
             res.append(_chk(3, "Bug hot-reload en VPS", "pass",
-                "No se detectaron reloads con strategies vacías"))
+                "Sin reloads vacíos en sesión reciente — estrategias estables"))
     except:
         res.append(_chk(3, "Bug hot-reload en VPS", "warn",
             f"No se pudo verificar: {out2}"))
 
-    # Errores en log
+    # Errores en log — desde el último arranque, excluyendo todos los errores de Telegram
     out3, _ = _ssh(
-        "grep -c '\\[ERROR\\]' /root/trading_bot_v11/logs/trading_bot.log 2>/dev/null || echo 0"
+        "awk '/Estrategias cargadas/{count=0; in_s=1} "
+        "in_s && /\\[ERROR\\]/ && !/telegram/{count++} "
+        "END{print count+0}' "
+        "/root/trading_bot_v11/logs/trading_bot.log 2>/dev/null || echo 0"
     )
     try:
         n = int(out3.strip().split()[0])
-        status = "pass" if n == 0 else ("warn" if n < 20 else "fail")
+        status = "pass" if n == 0 else ("warn" if n < 5 else "fail")
         res.append(_chk(3, "Errores en log VPS", status,
-            f"{n} líneas de ERROR en el log total"))
+            f"{n} errores de bot desde el último arranque (excluye errores Telegram/API externos)"))
     except:
         res.append(_chk(3, "Errores en log VPS", "warn", f"No se pudo contar: {out3}"))
 
@@ -451,9 +454,9 @@ def _nivel3():
     if local_commit and vps_commit and local_commit == vps_commit:
         res.append(_chk(3, "Git sincronizado local↔VPS", "pass",
             f"Ambos en commit {local_commit}"))
-    elif not vps_commit or "error" in vps_commit.lower():
+    elif not vps_commit or "error" in vps_commit.lower() or "timeout" in vps_commit.lower():
         res.append(_chk(3, "Git sincronizado local↔VPS", "warn",
-            "No se pudo leer el commit del VPS"))
+            "No se pudo conectar al VPS para verificar — git sync desconocido"))
     else:
         res.append(_chk(3, "Git sincronizado local↔VPS", "warn",
             f"Local: {local_commit} | VPS: {vps_commit} — desincronizados",
