@@ -505,13 +505,13 @@ def _nivel4():
             "El bot opera solo con indicadores — sin filtro IA"))
 
     # Telegram
-    tg = env_vars.get("TELEGRAM_TOKEN","")
+    tg = env_vars.get("TELEGRAM_BOT_TOKEN","")
     if len(tg) > 10:
         res.append(_chk(4, "Telegram token", "pass",
             f"Token configurado ({tg[:8]}***)"))
     else:
         res.append(_chk(4, "Telegram token", "warn",
-            "TELEGRAM_TOKEN no encontrado — sin notificaciones"))
+            "TELEGRAM_BOT_TOKEN no encontrado en .env — sin notificaciones"))
 
     return res
 
