@@ -1,18 +1,22 @@
 """
-agents/audit_agent/audit_agent.py
+agents/audit_agent/audit_agent.py  — v14
 ════════════════════════════════════════════════════════════════
 AUDIT + CALIBRACIÓN + TELEGRAM — Responsabilidad: comunicación y mejora
 
 TIEMPO REAL (Lun-Vie):
-  - Notificaciones automáticas: arranque, orden abierta, cierre, estado
-  - Bot conversacional: comandos /estado /trades /posiciones etc.
+  - Notificaciones automáticas: arranque, sesión abierta/cerrada,
+    orden abierta, cierre, estado periódico, errores críticos
+  - Bot conversacional: comandos /estado /trades /posiciones /sesion etc.
   - Responde preguntas libres en español con contexto real del sistema
 
+SESIONES ACTIVAS (London+Overlap = 07:00-17:00 UTC):
+  - 07:00 UTC → notificación de inicio de sesión London
+  - 17:00 UTC → notificación de cierre de sesión (fin del día)
+
 FIN DE SEMANA (Sáb 00:00 - Dom 22:00 UTC):
-  - Análisis completo con DeepSeek V4-Pro + QuantStats
-  - Backtesting comparativo con parámetros propuestos
+  - Análisis completo con DeepSeek + QuantStats
   - Calibración automática si mejora > 5%
-  - Reporte HTML + resumen Telegram
+  - Reporte resumen Telegram
 ════════════════════════════════════════════════════════════════
 """
 import asyncio
@@ -90,6 +94,7 @@ class AuditAgent:
             app.add_handler(CommandHandler("posiciones", self._cmd_posiciones))
             app.add_handler(CommandHandler("semana",     self._cmd_semana))
             app.add_handler(CommandHandler("params",     self._cmd_params))
+            app.add_handler(CommandHandler("sesion",     self._cmd_sesion))
             app.add_handler(CommandHandler("pausar",     self._cmd_pausar))
             app.add_handler(CommandHandler("reanudar",   self._cmd_reanudar))
             app.add_handler(CommandHandler("ayuda",      self._cmd_ayuda))
@@ -282,6 +287,56 @@ class AuditAgent:
             msg += "\n".join(f"  ⏸ {e}" for e in p["estrategias_pausadas"])
         await update.message.reply_text(msg, parse_mode="HTML")
 
+    async def _cmd_sesion(self, update, context):
+        """/ sesion — estado de la sesión actual y próxima ventana de trading."""
+        hora_utc = datetime.now(timezone.utc)
+        h        = hora_utc.hour
+        sesiones = self._params.get("sesiones_activas", ["london", "overlap"])
+
+        if 7 <= h < 13:
+            sesion_actual = "🟢 LONDON (07:00-13:00 UTC)"
+            activa        = "london" in sesiones
+            proxima       = "Overlap abre en " + f"{13-h}h"
+        elif 13 <= h < 17:
+            sesion_actual = "🟢 OVERLAP (13:00-17:00 UTC)"
+            activa        = "overlap" in sesiones
+            proxima       = f"Sesión cierra en {17-h}h — sin trading hasta mañana 07:00 UTC"
+        elif 17 <= h < 22:
+            sesion_actual = "⚫ NEW YORK (17:00-22:00 UTC)"
+            activa        = False
+            proxima       = f"London abre en {31-h}h (mañana 07:00 UTC)"
+        else:
+            sesion_actual = "⚫ ASIA / FUERA DE SESIÓN"
+            activa        = False
+            minutos_hasta = (7 - h) % 24
+            proxima       = f"London abre en ~{minutos_hasta}h (07:00 UTC)"
+
+        estado_bot = "✅ OPERANDO" if activa else "⏸ EN ESPERA"
+        snap       = self._risk.snapshot() if self._risk else {}
+        pos        = snap.get("posiciones", 0)
+
+        trades_hoy = self._cargar_trades_hoy()
+        wins_hoy   = sum(1 for t in trades_hoy if t.get("pnl", 0) > 0)
+        pnl_hoy    = sum(t.get("pnl", 0) for t in trades_hoy)
+        wr_hoy     = wins_hoy / len(trades_hoy) if trades_hoy else 0
+
+        msg = (
+            f"🕐 <b>SESIÓN ACTUAL</b>\n"
+            f"{'─'*30}\n"
+            f"⏰ {hora_utc.strftime('%H:%M UTC')}\n"
+            f"📍 {sesion_actual}\n"
+            f"Bot:        <b>{estado_bot}</b>\n"
+            f"📌 Pos:     {pos} abiertas\n"
+            f"{'─'*30}\n"
+            f"<b>HOY</b>\n"
+            f"Trades:     {len(trades_hoy)} ({wins_hoy}W / {len(trades_hoy)-wins_hoy}L)\n"
+            f"WR:         {wr_hoy:.1%}\n"
+            f"PnL:        ${pnl_hoy:+.4f}\n"
+            f"{'─'*30}\n"
+            f"⏭ {proxima}"
+        )
+        await update.message.reply_text(msg, parse_mode="HTML")
+
     async def _cmd_pausar(self, update, context):
         """/ pausar — pausa temporalmente el sistema."""
         self._params["_pausado"] = True
@@ -294,19 +349,24 @@ class AuditAgent:
 
     async def _cmd_ayuda(self, update, context):
         """/ ayuda — lista de comandos disponibles."""
+        sep = "─" * 28
         msg = (
-            "🤖 <b>COMANDOS DISPONIBLES</b>\n"
-            "{'─'*28}\n"
-            "/estado      → Capital, PnL, posiciones\n"
-            "/trades      → Últimos 10 trades\n"
-            "/posiciones  → Posiciones abiertas en OANDA\n"
-            "/semana      → Reporte semanal completo\n"
-            "/params      → Parámetros calibrados\n"
-            "/pausar      → Pausar el sistema\n"
-            "/reanudar    → Reanudar el sistema\n"
-            "/ayuda       → Esta lista\n\n"
-            "💬 También puedes escribir cualquier pregunta en español\n"
-            "y el sistema te responderá con datos reales."
+            f"🤖 <b>TRADING BOT v14 — COMANDOS</b>\n"
+            f"{sep}\n"
+            f"/estado      → Capital, PnL, posiciones\n"
+            f"/sesion      → Sesión activa y estado del día\n"
+            f"/trades      → Últimos 10 trades\n"
+            f"/posiciones  → Posiciones abiertas en OANDA\n"
+            f"/semana      → Reporte semanal completo\n"
+            f"/params      → Parámetros activos\n"
+            f"/pausar      → Pausar señales nuevas\n"
+            f"/reanudar    → Reanudar operación\n"
+            f"/ayuda       → Esta lista\n"
+            f"{sep}\n"
+            f"💬 Escribe cualquier pregunta en español\n"
+            f"y el bot responderá con datos reales del sistema.\n\n"
+            f"🕐 Horario activo: Lun-Vie 07:00-17:00 UTC\n"
+            f"🧠 Motor: deepseek-chat (briefing) + reasoner (decisión)"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
@@ -387,18 +447,21 @@ PREGUNTA: {pregunta}
     # ════════════════════════════════════════════════════════════════
 
     async def notificar_arranque(self, capital: float, modo: str):
-        pip_val = {p: (0.01 if "JPY" in p else 0.0001)
-                   for p in self._params.get("pares_activos", [])}
-        hora    = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        hora     = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        pares    = self._params.get("pares_activos", [])
+        sesiones = self._params.get("sesiones_activas", [])
+        timeout  = self._params.get("max_trade_hours", 12)
+        adx_min  = self._params.get("adx_min_operar", 23)
         msg = (
-            f"🟢 <b>SISTEMA ARRANCADO</b>\n"
-            f"{'─'*28}\n"
+            f"🟢 <b>SISTEMA ARRANCADO — v14</b>\n"
+            f"{'─'*30}\n"
             f"⏰ {hora}\n"
-            f"💰 Capital:    <b>${capital:.2f}</b>\n"
-            f"📋 Modo:       <b>{modo.upper()}</b>\n"
-            f"🎯 Estrategias: {len(self._params['estrategias_activas'])} activas\n"
-            f"📊 Pares:      {len(self._params.get('pares_activos', []))}\n"
-            f"⚙️ Versión:    v11 DeepSeek"
+            f"💰 Capital:     <b>${capital:.2f}</b>\n"
+            f"📋 Modo:        <b>{modo.upper()}</b>\n"
+            f"📊 Pares:       {', '.join(p.replace('_','/') for p in pares)}\n"
+            f"🕐 Sesiones:    {', '.join(sesiones)} (07:00-17:00 UTC)\n"
+            f"🧠 Señales:     Briefing (chat) → Decisor (reasoner)\n"
+            f"⚙️ ADX mín:     {adx_min} | Timeout: {timeout}h | RR: {self._params.get('rr_ratio',2.0)}"
         )
         await self._enviar(msg)
 
@@ -409,20 +472,29 @@ PREGUNTA: {pregunta}
         emoji  = "📈" if orden["dir"] == "long" else "📉"
         par    = orden["par"].replace("_", "/")
         hora   = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        conf   = orden.get("conf", 0)
+        razon  = orden.get("razon", "")
+
+        # Barra de confianza visual
+        bloques   = int(conf * 10)
+        conf_bar  = "█" * bloques + "░" * (10 - bloques)
 
         msg = (
             f"{emoji} <b>NUEVA ORDEN</b> — {par}\n"
-            f"{'─'*28}\n"
+            f"{'─'*30}\n"
             f"⏰ {hora}\n"
-            f"Dir:        {orden['dir'].upper()}\n"
+            f"Dir:        <b>{orden['dir'].upper()}</b>\n"
             f"Entry:      {orden['entry']:.5f}\n"
-            f"SL:         {orden['sl']:.5f} ({sl_pip:.1f} pips)\n"
-            f"TP:         {orden['tp']:.5f} ({tp_pip:.1f} pips)\n"
+            f"SL:         {orden['sl']:.5f}  ({sl_pip:.1f} pips)\n"
+            f"TP:         {orden['tp']:.5f}  ({tp_pip:.1f} pips)\n"
             f"Unidades:   {abs(orden['units'])}\n"
             f"Riesgo:     ${orden['risk_usd']:.2f}\n"
+            f"Confianza:  {conf:.0%}  [{conf_bar}]\n"
             f"Estrategia: {orden['estrategia']}\n"
-            f"ID:         {orden['trade_id']}"
         )
+        if razon:
+            msg += f"Razón:      <i>{razon}</i>\n"
+        msg += f"ID:         {orden['trade_id']}"
         await self._enviar(msg)
 
     async def notificar_orden_cerrada(self, trade_id: str, par: str,
@@ -520,8 +592,330 @@ PREGUNTA: {pregunta}
         await self._enviar(msg)
 
     # ════════════════════════════════════════════════════════════════
+    # CALIBRACIÓN AUTOMÁTICA — llamada por backtest_harness cada sábado
+    # ════════════════════════════════════════════════════════════════
+
+    def calibrar(self) -> None:
+        """
+        Calibración automática basada en historial real de trades.
+        Llamado sincrónicamente por backtest_harness (AUDIT_CALIBRATION_METHODS).
+
+        Decisiones que toma:
+          - Activa/pausa pares según WR vs breakeven (RR=2 → 33.3%)
+          - Activa/pausa estrategias según WR con mínimo de trades
+          - Ajusta adx_max_rsi_bollinger según WR global observado
+          - Ajusta min_sl_pips según ratio de SLs instantáneos
+          - Activa/pausa sesiones según PnL acumulado por sesión
+          - Escribe resultado a strategy_params.json
+        """
+        logger.info("[AuditAgent.calibrar] ── Calibración automática iniciando ──")
+
+        trades = self._cargar_todos_los_trades()
+        n_total = len(trades)
+        if n_total < 20:
+            logger.warning(
+                f"[AuditAgent.calibrar] Solo {n_total} trades — "
+                "calibración omitida (mínimo 20 para decisiones válidas)"
+            )
+            return
+
+        # ── Leer parámetros base ─────────────────────────────────────────────
+        try:
+            with open(PARAMS_FILE, encoding="utf-8") as f:
+                params = json.load(f)
+        except Exception as exc:
+            logger.error(f"[AuditAgent.calibrar] No se pudo leer PARAMS_FILE: {exc}")
+            return
+
+        rr          = params.get("rr_ratio", 2.0)
+        breakeven   = 1.0 / (1.0 + rr)          # 0.333 para RR=2
+
+        # ── Métricas por par ─────────────────────────────────────────────────
+        stats_par: dict = {}
+        for t in trades:
+            par = t.get("par") or t.get("instrument", "")
+            if not par:
+                continue
+            s = stats_par.setdefault(par, {"n": 0, "wins": 0, "gain": 0.0, "loss": 0.0})
+            pnl = float(t.get("pnl", 0))
+            s["n"] += 1
+            if pnl > 0:
+                s["wins"] += 1; s["gain"] += pnl
+            else:
+                s["loss"] += abs(pnl)
+
+        # ── Métricas por estrategia ──────────────────────────────────────────
+        stats_strat: dict = {}
+        for t in trades:
+            strat = t.get("estrategia", "?")
+            s = stats_strat.setdefault(strat, {"n": 0, "wins": 0, "gain": 0.0, "loss": 0.0})
+            pnl = float(t.get("pnl", 0))
+            s["n"] += 1
+            if pnl > 0:
+                s["wins"] += 1; s["gain"] += pnl
+            else:
+                s["loss"] += abs(pnl)
+
+        # ── Métricas por sesión (usando hora de apertura) ────────────────────
+        session_pnl: dict = {"london": 0.0, "overlap": 0.0, "new_york": 0.0}
+        session_n:   dict = {"london": 0,   "overlap": 0,   "new_york": 0}
+        for t in trades:
+            open_str = t.get("openTime") or t.get("opened_at", "")
+            try:
+                dt   = datetime.fromisoformat(str(open_str).replace("Z", "+00:00"))
+                hour = dt.hour
+                if   7  <= hour < 12: ses = "london"
+                elif 12 <= hour < 17: ses = "overlap"
+                elif 17 <= hour < 22: ses = "new_york"
+                else:                  continue
+                session_pnl[ses] += float(t.get("pnl", 0))
+                session_n[ses]   += 1
+            except Exception:
+                pass
+
+        # ── Selección de pares ───────────────────────────────────────────────
+        MIN_TRADES_PAR = 50   # necesitamos 50+ trades por par para decisión estadísticamente válida
+        todos_pares = list({
+            *params.get("pares_activos", []),
+            *params.get("pares_pausados", []),
+        })
+        pares_activos_new  = []
+        pares_pausados_new = []
+
+        for par in todos_pares:
+            s = stats_par.get(par)
+            if s and s["n"] >= MIN_TRADES_PAR:
+                wr = s["wins"] / s["n"]
+                pf = (s["gain"] / s["loss"]) if s["loss"] > 0 else 99.0
+                if wr >= breakeven:
+                    pares_activos_new.append(par)
+                    logger.info(
+                        f"[AuditAgent.calibrar]  PAR ACTIVO  : {par} "
+                        f"WR={wr:.1%} PF={pf:.2f} n={s['n']}"
+                    )
+                else:
+                    pares_pausados_new.append(par)
+                    logger.info(
+                        f"[AuditAgent.calibrar]  PAR PAUSADO : {par} "
+                        f"WR={wr:.1%} < {breakeven:.1%} n={s['n']}"
+                    )
+            else:
+                # Sin suficientes datos → mantener estado actual
+                if par in params.get("pares_activos", []):
+                    pares_activos_new.append(par)
+                else:
+                    pares_pausados_new.append(par)
+
+        if not pares_activos_new:
+            pares_activos_new = params.get("pares_activos", ["NZD_USD"])
+            logger.warning("[AuditAgent.calibrar] Ningún par supera breakeven — manteniendo actuales")
+
+        # ── Salvaguarda anti-deadlock: evitar dejar solo pares sin datos ────────
+        # Si todos los pares activos tienen 0 trades reales (p.ej. AUD_USD sin
+        # datos históricos), el bot no generará señales. Restaurar el par pausado
+        # con más trades para garantizar que haya al menos un par con actividad.
+        pares_activos_con_datos = [
+            p for p in pares_activos_new
+            if stats_par.get(p, {}).get("n", 0) >= 1
+        ]
+        if not pares_activos_con_datos and pares_pausados_new:
+            mejor_pausado = max(
+                pares_pausados_new,
+                key=lambda p: stats_par.get(p, {}).get("n", 0),
+            )
+            pares_activos_new.append(mejor_pausado)
+            pares_pausados_new = [p for p in pares_pausados_new if p != mejor_pausado]
+            logger.warning(
+                f"[AuditAgent.calibrar] Anti-deadlock: todos los pares activos "
+                f"tienen 0 trades reales. Restaurando '{mejor_pausado}' "
+                f"(n={stats_par.get(mejor_pausado, {}).get('n', 0)} trades) "
+                f"para evitar bot inoperativo."
+            )
+
+        # Salvaguarda: limpiar pausados de cualquier par que esté en activos
+        pares_pausados_new = [p for p in pares_pausados_new if p not in pares_activos_new]
+
+        # ── Selección de estrategias ─────────────────────────────────────────
+        MIN_TRADES_STRAT = 50  # 50+ trades por estrategia antes de pausarla
+        todas_strats = list({
+            *params.get("estrategias_activas", []),
+            *params.get("estrategias_pausadas", []),
+        })
+        strats_activas_new  = []
+        strats_pausadas_new = []
+
+        for strat in todas_strats:
+            s = stats_strat.get(strat)
+            if s and s["n"] >= MIN_TRADES_STRAT:
+                wr = s["wins"] / s["n"]
+                # Umbral algo más permisivo que breakeven puro (80%) por ruido estadístico
+                if wr >= breakeven * 0.80:
+                    strats_activas_new.append(strat)
+                    logger.info(
+                        f"[AuditAgent.calibrar]  ESTRATEGIA ACTIVA : {strat} "
+                        f"WR={wr:.1%} n={s['n']}"
+                    )
+                else:
+                    strats_pausadas_new.append(strat)
+                    logger.info(
+                        f"[AuditAgent.calibrar]  ESTRATEGIA PAUSADA: {strat} "
+                        f"WR={wr:.1%} n={s['n']}"
+                    )
+            else:
+                if strat in params.get("estrategias_activas", []):
+                    strats_activas_new.append(strat)
+                else:
+                    strats_pausadas_new.append(strat)
+
+        if not strats_activas_new:
+            strats_activas_new = params.get("estrategias_activas", ["RSI_Bollinger"])
+            logger.warning("[AuditAgent.calibrar] Ninguna estrategia supera umbral — manteniendo actuales")
+        # Salvaguarda: limpiar pausadas de cualquier estrategia que esté en activas
+        strats_pausadas_new = [s for s in strats_pausadas_new if s not in strats_activas_new]
+
+        # ── adx_max_rsi_bollinger: PROTEGIDO — no se auto-ajusta ─────────────
+        # Motivo: cuando WR es bajo, la lógica "subir ADX para pasar más señales"
+        # llevó adx_max de 35 a 38, lo que desactiva el filtro completamente
+        # (score_threshold = (38-15)/20 = 1.15, nunca alcanzable).
+        # El valor correcto (adx_max=25, threshold=0.50) debe configurarse
+        # manualmente en strategy_params.json. No tocar automáticamente.
+        wins_total = sum(1 for t in trades if float(t.get("pnl", 0)) > 0)
+        wr_global  = wins_total / n_total
+        adx_nuevo  = params.get("adx_max_rsi_bollinger", 25)  # conservar sin cambio
+
+        # ── min_sl_pips: PROTEGIDO — no se auto-reduce ───────────────────────
+        # El ajuste automático de SL corto → min_sl_pips iba de 10 a 6 en 4 semanas,
+        # lo que es contraproducente. El valor se mantiene del config manual.
+        # Solo se ajusta hacia ARRIBA si hay SLs instantáneos excesivos.
+        instant_sl = sum(
+            1 for t in trades
+            if t.get("resultado") == "SL"
+            and str(t.get("openTime", t.get("opened_at", "")))[:16]
+               == str(t.get("closeTime", t.get("closed_at", "")))[:16]
+        )
+        sl_actual = params.get("min_sl_pips", 10)
+        ratio_instant = instant_sl / n_total if n_total > 0 else 0
+
+        # Solo subir (nunca bajar) — proteger el mínimo configurado
+        if ratio_instant > 0.30:
+            sl_nuevo = min(sl_actual + 2, 18)
+            logger.info(
+                f"[AuditAgent.calibrar]  min_sl_pips: {sl_actual} → {sl_nuevo} "
+                f"(SLs instantáneos={instant_sl}/{n_total} = {ratio_instant:.0%})"
+            )
+        else:
+            sl_nuevo = sl_actual   # nunca bajar automáticamente
+
+        # ── Ajuste de sesiones ───────────────────────────────────────────────
+        sesiones_activas = list(params.get("sesiones_activas", ["london", "new_york", "overlap"]))
+        for ses in ["london", "overlap", "new_york"]:
+            n   = session_n.get(ses, 0)
+            pnl = session_pnl.get(ses, 0.0)
+            # 30+ trades mínimo para pausar sesión (antes era 20, insuficiente
+            # para decisiones estadísticamente válidas — con 21 trades/sesión
+            # se pausó london en el backtest cuando WR era ruido estadístico).
+            if n >= 30 and pnl < -15.0 and ses in sesiones_activas:
+                sesiones_activas.remove(ses)
+                logger.info(
+                    f"[AuditAgent.calibrar]  SESIÓN PAUSADA : {ses} "
+                    f"PnL=${pnl:.2f} n={n}"
+                )
+            elif n >= 20 and pnl > 5.0 and ses not in sesiones_activas:
+                sesiones_activas.append(ses)
+                logger.info(
+                    f"[AuditAgent.calibrar]  SESIÓN ACTIVADA: {ses} "
+                    f"PnL=${pnl:.2f} n={n}"
+                )
+        if not sesiones_activas:
+            sesiones_activas = ["london", "new_york"]
+
+        # ── Guardar calibración ──────────────────────────────────────────────
+        params.update({
+            "pares_activos":          sorted(pares_activos_new),
+            "pares_pausados":         sorted(pares_pausados_new),
+            "estrategias_activas":    strats_activas_new,
+            "estrategias_pausadas":   strats_pausadas_new,
+            "sesiones_activas":       sesiones_activas,
+            "min_sl_pips":            sl_nuevo,
+            "adx_max_rsi_bollinger":  adx_nuevo,
+            "calibrado_en":           datetime.now(timezone.utc).isoformat(),
+            "calibrado_por":          "audit_agent_calibrar",
+            "wr_global_calibracion":  round(wr_global, 3),
+            "trades_calibracion":     n_total,
+        })
+
+        try:
+            with open(PARAMS_FILE, "w", encoding="utf-8") as f:
+                json.dump(params, f, ensure_ascii=False, indent=2)
+            logger.info(
+                f"[AuditAgent.calibrar] ✓ Guardado — "
+                f"pares={pares_activos_new} | "
+                f"strats={strats_activas_new} | "
+                f"adx={adx_nuevo} | sl_pips={sl_nuevo} | "
+                f"sesiones={sesiones_activas} | "
+                f"WR={wr_global:.1%} ({wins_total}/{n_total})"
+            )
+        except Exception as exc:
+            logger.error(f"[AuditAgent.calibrar] Error guardando: {exc}")
+
+    # ════════════════════════════════════════════════════════════════
     # FIN DE SEMANA — ANÁLISIS Y CALIBRACIÓN
     # ════════════════════════════════════════════════════════════════
+
+    async def notificar_sesion_abierta(self):
+        """07:00 UTC Lun-Vie — London abre, el bot empieza a buscar trades."""
+        p     = self._params
+        pares = [x.replace("_", "/") for x in p.get("pares_activos", [])]
+        fecha = datetime.now(timezone.utc).strftime("%a %d %b")
+        sep   = "─" * 30
+        msg   = (
+            f"🟢 <b>SESIÓN ABIERTA — LONDON</b>\n"
+            f"{sep}\n"
+            f"📅 {fecha} | 07:00 UTC\n"
+            f"📊 Pares:       {', '.join(pares)}\n"
+            f"⚙️ ADX mín:     {p.get('adx_min_operar', 23)} | "
+            f"RR: {p.get('rr_ratio', 2.0)} | "
+            f"Timeout: {p.get('max_trade_hours', 12)}h\n"
+            f"🧠 Motor:       Briefing (chat) → Decisor (reasoner)\n"
+            f"🕐 Cierre:      17:00 UTC (Overlap)"
+        )
+        await self._enviar(msg)
+
+    async def notificar_sesion_cerrada(self):
+        """17:00 UTC Lun-Vie — Overlap cierra, resumir el dia."""
+        trades = self._cargar_trades_hoy()
+        wins   = sum(1 for t in trades if t.get("pnl", 0) > 0)
+        losses = len(trades) - wins
+        pnl    = sum(t.get("pnl", 0) for t in trades)
+        wr     = wins / len(trades) if trades else 0
+        snap   = self._risk.snapshot() if self._risk else {}
+        cap    = snap.get("capital", 0)
+
+        if not trades:
+            resumen = "Sin trades hoy."
+        elif wr >= 0.50:
+            resumen = "✅ Buen día — WR por encima del 50%"
+        elif wr >= 0.333:
+            resumen = "📊 Día rentable — WR sobre break-even"
+        else:
+            resumen = "⚠️ WR bajo break-even — revisar mañana"
+
+        sep = "─" * 30
+        msg = (
+            f"⚫ <b>SESIÓN CERRADA</b>\n"
+            f"{sep}\n"
+            f"⏰ 17:00 UTC — Overlap cerrado\n"
+            f"{sep}\n"
+            f"<b>RESUMEN DEL DÍA</b>\n"
+            f"Trades:     {len(trades)} ({wins}✅ / {losses}❌)\n"
+            f"WR:         <b>{wr:.1%}</b>\n"
+            f"PnL:        <b>${pnl:+.4f}</b>\n"
+            f"Capital:    <b>${cap:.2f}</b>\n"
+            f"{sep}\n"
+            f"{resumen}\n"
+            f"⏭ Próxima sesión: mañana 07:00 UTC"
+        )
+        await self._enviar(msg)
 
     async def run(self):
         """Loop del AuditAgent — tareas programadas + Telegram."""
@@ -530,7 +924,35 @@ PREGUNTA: {pregunta}
         # Iniciar bot Telegram
         await self.iniciar_telegram()
 
-        # Programar tareas del fin de semana
+        # ── Sesión London+Overlap: notificaciones de apertura y cierre ────────
+        schedule.every().monday.at("07:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_abierta()))
+        schedule.every().tuesday.at("07:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_abierta()))
+        schedule.every().wednesday.at("07:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_abierta()))
+        schedule.every().thursday.at("07:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_abierta()))
+        schedule.every().friday.at("07:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_abierta()))
+
+        schedule.every().monday.at("17:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_cerrada()))
+        schedule.every().tuesday.at("17:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_cerrada()))
+        schedule.every().wednesday.at("17:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_cerrada()))
+        schedule.every().thursday.at("17:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_cerrada()))
+        schedule.every().friday.at("17:00").do(
+            lambda: asyncio.create_task(self.notificar_sesion_cerrada()))
+
+        # ── Estado periódico cada 4 horas (solo en horario activo) ───────────
+        schedule.every(4).hours.do(
+            lambda: asyncio.create_task(self._notificar_estado_si_activo())
+        )
+
+        # ── Fin de semana ─────────────────────────────────────────────────────
         schedule.every().saturday.at("00:00").do(
             lambda: asyncio.create_task(self._analisis_semanal())
         )
@@ -540,14 +962,17 @@ PREGUNTA: {pregunta}
         schedule.every().sunday.at("22:00").do(
             lambda: asyncio.create_task(self._notificar_apertura())
         )
-        schedule.every(4).hours.do(
-            lambda: asyncio.create_task(self.notificar_estado())
-        )
 
-        logger.info("AuditAgent: loop iniciado (schedule + Telegram)")
+        logger.info("AuditAgent: loop iniciado (schedule London+Overlap + Telegram)")
         while self._running:
             schedule.run_pending()
             await asyncio.sleep(60)
+
+    async def _notificar_estado_si_activo(self):
+        """Solo envía estado periódico durante sesión London+Overlap (7-17 UTC)."""
+        h = datetime.now(timezone.utc).hour
+        if 7 <= h < 17:
+            await self.notificar_estado()
 
     async def _analisis_semanal(self):
         """Análisis completo del sábado con DeepSeek V4-Pro + QuantStats."""
@@ -646,8 +1071,8 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
             response = await loop.run_in_executor(
                 None,
                 lambda: self._ds.chat.completions.create(
-                    model    = MODEL_DEEP,
-                    messages = [{"role": "user", "content": prompt}],
+                    model      = MODEL_FAST,   # chat soporta json_object; reasoner no
+                    messages   = [{"role": "user", "content": prompt}],
                     response_format = {"type": "json_object"},
                     max_tokens = 400,
                 )
@@ -706,34 +1131,17 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
         if dd:    msg += f"Max DD:   <b>{dd:.1%}</b>\n"
         msg += f"PnL:      <b>${pnl:+.4f}</b>\n\n"
 
-        msg += f"<b>🔧 ANÁLISIS</b>\n{analisis.get('accion_inmediata','N/A')}\n"
+        msg += f"<b>\U0001f527 AN\u00c1LISIS</b>\n{analisis.get('accion_inmediata','N/A')}\n"
 
         sugs = analisis.get("sugerencias", [])
         if sugs:
             msg += "\n<b>Cambios propuestos:</b>\n"
             for s in sugs[:2]:
-                msg += f"• {s.get('param')}: {s.get('actual')} → {s.get('propuesto')} ({s.get('impacto','')})\n"
+                msg += f"\u2022 {s.get('param')}: {s.get('actual')} \u2192 {s.get('propuesto')} ({s.get('impacto','')})\n"
 
         await self._enviar(msg)
 
-    async def _preparar_apertura(self):
-        p   = self._params
-        msg = (
-            f"🟡 <b>PREPARANDO APERTURA</b>\n"
-            f"Sesión Asia en ~2 horas (Dom 22:00 UTC)\n\n"
-            f"Parámetros activos:\n"
-            f"• SL: {p['sl_atr_mult']}×ATR (mín {p['min_sl_pips']} pips)\n"
-            f"• RR: {p['rr_ratio']}\n"
-            f"• Riesgo: {p['riesgo_pct']:.1%}/op\n"
-            f"• Estrategias: {', '.join(p['estrategias_activas'])}"
-        )
-        await self._enviar(msg)
-
-    async def _notificar_apertura(self):
-        await self._enviar(
-            "🟢 <b>MERCADO ABIERTO</b>\n"
-            "Sesión Asia iniciada — sistema operativo 24/7"
-        )
+    # \u2550 UTILIDADES \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 
     async def notificar_break_even(self, trade_id, par, dir_, entry, new_sl, precio, sl_dist):
         pip = 0.01 if "JPY" in par else 0.0001
@@ -741,7 +1149,7 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
         sl_dist_pip  = sl_dist / pip
         hora = datetime.now(timezone.utc).strftime("%H:%M UTC")
         lineas = [
-            "🔒 <b>BREAK-EVEN ACTIVADO</b>",
+            "\U0001f512 <b>BREAK-EVEN ACTIVADO</b>",
             f"Par:      {par.replace('_', '/')}",
             f"Hora:     {hora}",
             f"Dir:      {dir_.upper()}",
@@ -749,12 +1157,12 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
             f"SL nuevo: {new_sl:.5f} (entry)",
             f"Precio:   {precio:.5f} (+{ganancia_pip:.1f} pips)",
             f"1R dist:  {sl_dist_pip:.1f} pips",
-            "Riesgo:   $0.00 ✅",
+            "Riesgo:   $0.00 \u2705",
             f"ID:       {trade_id}",
         ]
         await self._enviar("\n".join(lineas))
 
-    # ── ENVÍO TELEGRAM ────────────────────────────────────────────────────────
+    # \u2500\u2500 ENV\u00cdO TELEGRAM \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     async def _enviar(self, texto: str) -> bool:
         if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -773,7 +1181,34 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
             logger.error(f"Telegram error: {e}")
             return False
 
-    # ── UTILIDADES ────────────────────────────────────────────────────────────
+    def _cargar_todos_los_trades(self) -> list:
+        candidatos = [
+            TRADES_LOG,
+            TRADES_LOG.parent.parent / "data" / "trades" / "trades_log.json",
+        ]
+        mejor = []
+        for path in candidatos:
+            try:
+                if path.exists() and path.stat().st_size > 2:
+                    trades = [t for t in json.loads(path.read_text()) if "pnl" in t]
+                    if len(trades) > len(mejor):
+                        mejor = trades
+            except Exception:
+                pass
+        return mejor
+
+    def _cargar_trades_hoy(self) -> list:
+        """Trades del d\u00eda actual (UTC)."""
+        try:
+            hoy   = datetime.now(timezone.utc).date().isoformat()
+            todos = json.loads(TRADES_LOG.read_text())
+            return [
+                t for t in todos
+                if str(t.get("opened_at", t.get("timestamp", "")))[:10] == hoy
+                and "pnl" in t
+            ]
+        except Exception:
+            return []
 
     def _cargar_trades_recientes(self, n: int = 20) -> list:
         try:
@@ -786,7 +1221,7 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
         try:
             ahora    = datetime.now(timezone.utc)
             semana   = ahora.isocalendar()[1]
-            año      = ahora.year
+            anio     = ahora.year
             todos    = json.loads(TRADES_LOG.read_text())
             resultado = []
             for t in todos:
@@ -794,7 +1229,7 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
                     ts = datetime.fromisoformat(
                         t.get("opened_at", "").replace("Z", "+00:00")
                     )
-                    if ts.isocalendar()[1] == semana and ts.year == año:
+                    if ts.isocalendar()[1] == semana and ts.year == anio:
                         resultado.append(t)
                 except Exception:
                     pass

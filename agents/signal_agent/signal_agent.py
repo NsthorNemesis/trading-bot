@@ -1,38 +1,40 @@
 """
-agents/signal_agent/signal_agent.py
-Pipeline de 5 filtros: cooldown/sesion -> calendario -> plugin strategies
--> regimen ADX -> DeepSeek + sentimiento.
+agents/signal_agent/signal_agent.py  — v14_reasoner
+Arquitectura: 2 agentes paralelos → 1 decisor con razonamiento profundo
 
-Cambios v11.2 (paquete fin de semana):
-  - Ensemble ponderado: multiples estrategias se combinan por consenso de
-    direccion + bonus de confianza (+5% por cada estrategia adicional que confirma)
-  - OandaSentiment en modo live cuando hay OANDA_TOKEN disponible
-  - _evaluar_estrategias ahora detecta conflictos de direccion y los descarta
+  AgenteBriefing      (deepseek-chat)   — análisis técnico + régimen unificado
+  AgenteContextoRiesgo (local, 0ms)     — exposición del portfolio sin API
+         │                │
+         └────────────────┘
+                  ↓ paquete consolidado único
+        AgenteDecision (deepseek-reasoner)
+        Razonamiento profundo sobre el briefing completo.
+        Decide: ¿operar? ¿dirección? ¿confianza?
+
+Cambios vs v13:
+  - Técnico + Régimen fusionados en un solo AgenteBriefing (1 llamada API en vez de 2)
+  - Decisor usa deepseek-reasoner (MODEL_DEEP) para razonamiento profundo
+  - Decisor recibe un único paquete consolidado estructurado (no 3 bloques separados)
+  - Reducción: 3 llamadas API → 2 llamadas API por evaluación
 """
+
 import asyncio
 import json
 import logging
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-
-from tenacity import retry, stop_after_attempt, wait_exponential
-from openai import OpenAI
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config.settings import (
-    DEEPSEEK_KEY, DEEPSEEK_BASE_URL, MODEL_FAST, PARAMS,
-    OANDA_TOKEN, OANDA_ENV,
-)
+from config.settings import DEEPSEEK_KEY, DEEPSEEK_BASE_URL, MODEL_FAST, MODEL_DEEP, PARAMS
 
 try:
-    from strategies import load_strategies
-    _STRATEGIES_OK = True
-except ImportError as _se:
-    _STRATEGIES_OK = False
-    logging.getLogger("signal_agent").warning(f"strategies/ no disponible: {_se}")
+    from openai import OpenAI
+    _OPENAI_OK = True
+except ImportError:
+    _OPENAI_OK = False
 
 try:
     from utils.regime_detector import RegimeDetector
@@ -55,14 +57,32 @@ except ImportError:
 logger = logging.getLogger("signal_agent")
 _REGIME_HIST: dict = {}
 
+# ── Prompts del sistema por agente ─────────────────────────────────────────
 
-def _es_modo_backtest() -> bool:
-    """Detecta si estamos corriendo en backtest (fake time activo)."""
-    try:
-        import backtest_harness as _bh
-        return bool(_bh.get_fake_time())
-    except Exception:
-        return False
+_SYS_BRIEFING = """Eres un analista cuantitativo de forex especializado en M15.
+Tu tarea: producir un briefing técnico completo del par en 6-8 oraciones que cubra:
+1. SETUP TÉCNICO: patrones de velas visibles, dirección dominante del precio,
+   confluencia de indicadores (EMA, MACD, RSI, Bollinger). Sé específico y objetivo.
+2. RÉGIMEN DE MERCADO: determina si el mercado está en TENDENCIA, RANGO o TRANSICIÓN.
+   Basa tu diagnóstico en ADX, alineación de EMAs y amplitud de las velas recientes.
+3. CALIDAD DEL SETUP: indica si los factores técnicos y el régimen son compatibles
+   para una entrada ahora. Si hay señales contradictorias, menciónalas explícitamente.
+No inventes patrones. Si el mercado es ambiguo, dilo claramente."""
+
+_SYS_DECISION = """Eres un gestor de riesgo cuantitativo especializado en forex M15.
+Tu tarea: evaluar el briefing de mercado y decidir si hay una oportunidad de ALTA PROBABILIDAD.
+
+Proceso de evaluación:
+1. El régimen debe ser TENDENCIA (no rango ni transición) — si no, rechaza.
+2. Al menos 2 indicadores técnicos deben estar alineados con la dirección propuesta.
+3. El contexto de riesgo no debe mostrar alertas activas que impidan el trade.
+4. Asigna confianza: 0.65-0.75 setup normal, 0.75-0.90 setup sólido, >0.90 excepcional.
+
+Principio fundamental: la inacción preserva capital. En caso de duda, conf=0.0 y trade=false.
+
+Al finalizar tu análisis responde EXCLUSIVAMENTE con este JSON válido, sin texto adicional:
+{"trade": true/false, "dir": "long"/"short"/null, "conf": 0.0-1.0,
+ "razon": "máximo 25 palabras explicando la decisión"}"""
 
 
 class SignalAgent:
@@ -74,130 +94,61 @@ class SignalAgent:
         self._running   = False
         self._regime    = RegimeDetector()   if _REGIME_OK   else None
         self._calendar  = EconomicCalendar() if _CALENDAR_OK else None
+        self._sentiment = OandaSentiment(oanda_api=None, modo_backtest=True) if _SENTIMENT_OK else None
 
-        # Sentimiento: modo live si hay token OANDA y no estamos en backtest
-        self._sentiment = None
-        if _SENTIMENT_OK:
-            modo_backtest = _es_modo_backtest() or not OANDA_TOKEN
-            if not modo_backtest:
-                try:
-                    import oandapyV20
-                    _oanda_api = oandapyV20.API(
-                        access_token=OANDA_TOKEN,
-                        environment=OANDA_ENV,
-                    )
-                    self._sentiment = OandaSentiment(
-                        oanda_api=_oanda_api,
-                        modo_backtest=False,
-                    )
-                    logger.info("SignalAgent: OandaSentiment en modo LIVE")
-                except Exception as _se:
-                    logger.warning(f"SignalAgent: OandaSentiment live error ({_se}) — modo backtest")
-                    self._sentiment = OandaSentiment(oanda_api=None, modo_backtest=True)
-            else:
-                self._sentiment = OandaSentiment(oanda_api=None, modo_backtest=True)
-                logger.info("SignalAgent: OandaSentiment en modo BACKTEST")
-
-        # Cargar plugins de estrategias
-        self._strategies = {}
-        self._reload_strategies()
-
-        # Callback para RiskExecutionAgent
-        self._on_senal_ext = None
-
-        if DEEPSEEK_KEY:
+        if DEEPSEEK_KEY and _OPENAI_OK:
             self._ds = OpenAI(api_key=DEEPSEEK_KEY, base_url=DEEPSEEK_BASE_URL)
-            logger.info(f"SignalAgent: DeepSeek {MODEL_FAST} activo")
+            logger.info(f"SignalAgent v14: briefing={MODEL_FAST} | decisor={MODEL_DEEP}")
         else:
             self._ds = None
-            logger.warning("SignalAgent: sin DeepSeek — modo solo indicadores")
+            logger.warning("SignalAgent v14: sin DeepSeek — señales desactivadas")
 
-        logger.info(
-            f"SignalAgent: regimen={'ON' if self._regime else 'OFF'} | "
-            f"calendario={'ON' if self._calendar else 'OFF'} | "
-            f"sentimiento={'ON' if self._sentiment else 'OFF'}"
-        )
+        self._suscriptores_senal: list = []
 
-    # ── Suscripcion de callbacks ──────────────────────────────────────────────
+    def suscribir_señal(self, cb):
+        """Registra un callback que se llama cada vez que hay una señal válida."""
+        self._suscriptores_senal.append(cb)
 
-    def suscribir_senal(self, callback) -> None:
-        """
-        Registra un callback asincrono que se invoca cada vez que
-        se detecta una senal valida. Usado por RiskExecutionAgent.
-        """
-        self._on_senal_ext = callback
-        logger.info("SignalAgent: callback de senal registrado")
-
-    # mantener compatibilidad con nombre anterior
-    def suscribir_señal(self, callback) -> None:
-        return self.suscribir_senal(callback)
-
-    # ── Recarga dinamica ───────────────────────────────────────────────────────
-
-    def reload_params(self, new_params: dict) -> None:
-        """
-        Actualiza parametros y recarga estrategias activas sin reiniciar el bot.
-        Llamado automaticamente por ParamsWatcher cuando strategy_params.json cambia.
-        """
-        self._params = new_params
-        self._reload_strategies()
-        logger.info(
-            f"SignalAgent: parametros recargados | "
-            f"estrategias activas: {sorted(self._strategies.keys())}"
-        )
-
-    def _reload_strategies(self) -> None:
-        """Carga (o recarga) las estrategias activas desde el paquete strategies/."""
-        if not _STRATEGIES_OK:
-            logger.warning("SignalAgent: usando prefiltro monolitico (strategies/ no disponible)")
-            self._strategies = {}
-            return
-        activas = self._params.get("estrategias_activas", [])
-        new_strategies = load_strategies(active_only=activas)
-
-        # Salvaguarda: si el reload devuelve vacío pero hay estrategias esperadas,
-        # mantener las anteriores para que el bot no quede sordo silenciosamente.
-        if not new_strategies and activas:
-            logger.warning(
-                f"ALERTA: reload devolvió estrategias vacías con activas={activas} "
-                f"— manteniendo anteriores: {sorted(self._strategies.keys())} "
-                f"— reiniciar el bot para resolver"
-            )
-            return  # Conservar self._strategies sin cambiar
-
-        self._strategies = new_strategies
-        logger.info(f"Estrategias cargadas: {sorted(self._strategies.keys())}")
-
-    # ── Loop principal ────────────────────────────────────────────────────────
+    # ── Loop principal ──────────────────────────────────────────────────────
 
     async def run(self):
         self._running = True
         logger.info("SignalAgent: esperando 5 min para datos frescos...")
         await asyncio.sleep(300)
-        logger.info("SignalAgent: iniciando evaluacion de senales")
+        logger.info("SignalAgent: iniciando evaluacion multi-agente")
         while self._running:
-            pares = self._params.get("pares_activos", [])
-            for par in pares:
+            for par in self._params.get("pares_activos", []):
                 try:
                     senal = await self.evaluar(par)
                     if senal:
                         logger.info(
-                            f"SENAL DETECTADA | {par} {senal['dir'].upper()} | "
+                            f"SENAL | {par} {senal['dir'].upper()} | "
                             f"conf={senal['conf']:.0%} | {senal['razon']}"
                         )
-                        if self._on_senal_ext is not None:
+                        for cb in self._suscriptores_senal:
                             try:
-                                await self._on_senal_ext(senal)
-                            except Exception as cb_err:
-                                logger.error(f"Error en callback de senal: {cb_err}")
+                                await cb(senal)
+                            except Exception as e:
+                                logger.warning(f"Error en suscriptor de señal: {e}")
                 except Exception as e:
                     logger.debug(f"Error evaluando {par}: {e}")
             await asyncio.sleep(30)
 
-    # ── Pipeline de evaluacion ────────────────────────────────────────────────
+    # ── Punto de entrada principal ──────────────────────────────────────────
 
     async def evaluar(self, par: str) -> Optional[dict]:
-        # Filtro 1: cooldown + sesion + datos frescos
+        """
+        Flujo v14:
+        1. Filtros rápidos locales (cooldown, sesión, datos frescos, calendario)
+        2. Pre-filtro ADX mínimo (evitar mercados muertos)
+        3. Lanzar 2 tareas en paralelo:
+             - AgenteBriefing (deepseek-chat): análisis técnico + régimen unificado
+             - AgenteContextoRiesgo (local):    portfolio + límites sin API
+        4. Ensamblar paquete consolidado único
+        5. AgenteDecision (deepseek-reasoner): razonamiento profundo → JSON
+        6. Ajuste de sentimiento OANDA (opcional)
+        """
+        # ── Filtros locales (sin coste API) ──────────────────────────────────
         if not self._filtro_cooldown(par):
             return None
         if not self._filtro_sesion():
@@ -205,155 +156,303 @@ class SignalAgent:
         if not self._market.datos_frescos(par):
             return None
 
-        # Obtener DataFrames multi-timeframe
-        df_m15 = self._market.get_df_m15(par, n=80)
-        if df_m15 is None or len(df_m15) < 20:
-            logger.debug(f"[MTF] {par}: M15 sin suficientes velas aun")
+        df = self._market.get_df(par, n=60)
+        if df is None or len(df) < 30:
             return None
-        df_h4 = self._market.get_df_h4(par, n=50)
 
-        # Filtro 2: calendario economico
+        # ── Calendario económico ─────────────────────────────────────────────
         if self._calendar:
             ts_actual = self._get_timestamp_actual()
             if self._calendar.en_blackout(ts_actual, par):
                 logger.debug(f"[Calendario] {par} en blackout")
                 return None
 
-        # Filtro 3: plugins de estrategias (ensemble)
-        presenal = self._evaluar_estrategias(df_m15, par)
-        if not presenal:
+        # ── Pre-filtro ADX: no operar en mercados planos ─────────────────────
+        adx_val = 0.0
+        if "ADX_14" in df.columns:
+            adx_val = float(df["ADX_14"].iloc[-1] or 0)
+        adx_min = float(self._params.get("adx_min_operar", 14))
+        if adx_val < adx_min:
+            logger.debug(f"[ADX] {par} ADX={adx_val:.1f} < {adx_min} — mercado plano, skip")
             return None
 
-        # Filtro 3.5: confirmacion de tendencia H4 (solo EMA_Crossover)
-        tendencia_h4 = self._market.tendencia_h4(par)
-        if not self._filtro_tendencia_h4(
-            presenal["dir"], tendencia_h4, par, presenal.get("estrategia", "")
-        ):
+        # ── Sin DeepSeek: no operar ──────────────────────────────────────────
+        if not self._ds:
             return None
 
-        # Filtro 4: regimen ADX
-        regime_score, transicion = self._calcular_regime(df_m15, par)
-        presenal = self._aplicar_peso_regime(presenal, regime_score, transicion, par)
-        if not presenal:
-            return None
-
-        presenal["tendencia_h4"] = tendencia_h4
-
-        # Filtro 5: DeepSeek
-        if self._ds:
-            try:
-                senal = await self._consultar_deepseek(
-                    par, df_m15, presenal, regime_score, transicion, df_h4
-                )
-            except Exception as _e:
-                logger.debug(f"[DS fallback] {par}: {_e} — usando indicadores")
-                conf_base = presenal.get("conf", 0)
-                senal = (
-                    presenal
-                    if conf_base >= self._params.get("min_confidence", 0.30)
-                    else None
-                )
-        else:
-            conf_base = presenal.get("conf", 0)
-            senal = (
-                presenal
-                if conf_base >= self._params.get("min_confidence", 0.30)
-                else None
+        # ── Lanzar 2 tareas en paralelo ──────────────────────────────────────
+        # BriefIng (API) + Riesgo (local) corren simultáneamente
+        try:
+            briefing_txt, riesgo_txt = await asyncio.wait_for(
+                asyncio.gather(
+                    self._agente_briefing(par, df),
+                    self._agente_riesgo(par),
+                ),
+                timeout=15.0,
             )
+        except asyncio.TimeoutError:
+            logger.warning(f"[v14] {par}: timeout en briefing")
+            return None
+        except Exception as e:
+            logger.warning(f"[v14] {par}: error en briefing — {e}")
+            return None
 
-        # Ajuste sentimiento OANDA
-        if senal and self._sentiment:
-            conf_antes = senal["conf"]
+        # ── Agente decisor (deepseek-reasoner) ──────────────────────────────
+        senal = await self._agente_decision(par, df, briefing_txt, riesgo_txt)
+        if not senal:
+            return None
+
+        # ── Ajuste de sentimiento OANDA ──────────────────────────────────────
+        if self._sentiment:
             senal["conf"] = self._sentiment.ajustar_confianza(
                 senal["conf"], par, senal["dir"]
             )
-            if senal["conf"] < self._params.get("min_confidence", 0.30):
-                logger.debug(
-                    f"[Sentiment] {par} descartado: conf {conf_antes:.2f} -> {senal['conf']:.2f}"
-                )
+            if senal["conf"] < float(self._params.get("min_confidence", 0.55)):
                 return None
 
+        self._cooldown[par] = datetime.utcnow()
         return senal
 
-    # ── Evaluacion de estrategias con ensemble ────────────────────────────────
+    # ── Agente 1: Briefing unificado (técnico + régimen) ───────────────────────
 
-    def _evaluar_estrategias(self, df, par: str) -> Optional[dict]:
+    async def _agente_briefing(self, par: str, df) -> str:
         """
-        Evalua todas las estrategias activas con logica de ensemble:
-
-        1. Corre todas las estrategias activas
-        2. Si solo hay una senal: la usa directamente
-        3. Si hay varias:
-           - Verifica consenso de direccion
-           - Si hay conflicto (long vs short en igual proporcion): descarta
-           - Si hay consenso: promedia confianzas + bonus de +5% por cada
-             estrategia adicional que confirma (max 15% bonus)
-           - Nombra la senal como Ensemble(A+B+...)
+        Fusión de análisis técnico y de régimen en una sola llamada API.
+        Produce un briefing estructurado de 6-8 oraciones que el decisor
+        puede consumir como paquete completo.
         """
-        if not self._strategies:
-            logger.debug(f"[{par}] Sin estrategias cargadas")
-            return None
+        u = df.iloc[-1]
 
-        candidatos = []
-        for nombre, estrategia in self._strategies.items():
+        # Últimas 15 velas
+        velas_data = []
+        for _, row in df.tail(15).iterrows():
+            ts = str(row.get("Timestamp", row.name))[:16]
+            op = float(row.get("Open",  0))
+            hi = float(row.get("High",  0))
+            lo = float(row.get("Low",   0))
+            cl = float(row.get("Close", 0))
+            velas_data.append(f"{ts}  O:{op:.5f}  H:{hi:.5f}  L:{lo:.5f}  C:{cl:.5f}")
+        velas_str = "\n".join(velas_data)
+
+        # Indicadores
+        rsi   = float(u.get("RSI_14",   50) or 50)
+        atr   = float(u.get("ATR_14",    0) or 0)
+        ema20 = float(u.get("EMA_20",    0) or 0)
+        ema50 = float(u.get("EMA_50",    0) or 0)
+        adx   = float(u.get("ADX_14",    0) or 0)
+        macd  = float(u.get("MACD_DIF",  0) or 0)
+        bbl   = next((float(u[c] or 0) for c in df.columns if "BBL" in c), 0)
+        bbu   = next((float(u[c] or 0) for c in df.columns if "BBU" in c), 0)
+        precio = float(u.get("Close", 0))
+        cierres = [f"{x:.5f}" for x in df["Close"].tail(10).tolist()]
+        atrs    = [f"{x:.5f}" for x in df["ATR_14"].dropna().tail(5).tolist()] \
+                  if "ATR_14" in df.columns else []
+
+        # Score de régimen local (cross-check sin LLM)
+        regime_score = 0.5
+        if self._regime:
             try:
-                resultado = estrategia.generate_signal(df, par, self._params)
-                if resultado:
-                    resultado.setdefault("par", par)
-                    candidatos.append(resultado)
-            except Exception as exc:
-                logger.debug(f"[{par}] Error en estrategia {nombre}: {exc}")
+                regime_score = self._regime.calcular_regime_score(df)
+            except Exception:
+                pass
 
-        if not candidatos:
+        prompt = (
+            f"Par: {par} | Timeframe: M15\n\n"
+            f"── VELAS (últimas 15) ──\n{velas_str}\n\n"
+            f"── INDICADORES ACTUALES ──\n"
+            f"  Precio={precio:.5f}  ATR={atr:.5f}  ADX={adx:.1f}\n"
+            f"  EMA20={ema20:.5f}  EMA50={ema50:.5f}  "
+            f"  (EMA20 {'SOBRE' if ema20>ema50 else 'BAJO'} EMA50, spread={abs(ema20-ema50):.5f})\n"
+            f"  RSI={rsi:.1f}  MACD_hist={macd:.5f}\n"
+            f"  BB_low={bbl:.5f}  BB_high={bbu:.5f}\n"
+            f"  Últimos 10 cierres: {', '.join(cierres)}\n"
+            f"  Últimos 5 ATR: {', '.join(atrs) if atrs else 'N/A'}\n"
+            f"  Score régimen (0=rango, 1=tendencia): {regime_score:.2f}\n\n"
+            f"Produce el briefing técnico completo: setup, régimen y calidad del setup."
+        )
+
+        loop = asyncio.get_event_loop()
+        try:
+            resp = await loop.run_in_executor(
+                None,
+                lambda: self._ds.chat.completions.create(
+                    model=MODEL_FAST,
+                    messages=[
+                        {"role": "system", "content": _SYS_BRIEFING},
+                        {"role": "user",   "content": prompt},
+                    ],
+                    max_tokens=320,
+                    temperature=0.2,
+                )
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as e:
+            return f"[Error briefing: {e}]"
+
+    # ── Agente 2: Contexto de Riesgo (local, sin LLM) ───────────────────────
+
+    async def _agente_riesgo(self, par: str) -> str:
+        """
+        Recopila estado del portfolio: posiciones abiertas, P&L del día,
+        drawdown, cooldowns. Devuelve resumen de texto estructurado.
+        """
+        try:
+            from config.settings import TRADES_LOG
+            import json as _json
+
+            lineas = []
+            # Posición actual del par
+            cooldown_activo = par in self._cooldown
+            mins_desde_ult  = None
+            if cooldown_activo:
+                mins_desde_ult = int(
+                    (datetime.utcnow() - self._cooldown[par]).total_seconds() / 60
+                )
+
+            # Intentar leer últimos trades del log
+            trades_hoy = []
+            try:
+                raw = _json.loads(TRADES_LOG.read_text(encoding="utf-8"))
+                hoy = datetime.utcnow().date().isoformat()
+                trades_hoy = [
+                    t for t in (raw if isinstance(raw, list) else [])
+                    if str(t.get("timestamp", ""))[:10] == hoy
+                ]
+            except Exception:
+                pass
+
+            wins_hoy  = sum(1 for t in trades_hoy if t.get("resultado") == "win")
+            loss_hoy  = sum(1 for t in trades_hoy if t.get("resultado") == "loss")
+            pnl_hoy   = sum(float(t.get("pnl", 0)) for t in trades_hoy)
+            total_hoy = len(trades_hoy)
+
+            max_dd_dia = float(self._params.get("max_drawdown_dia", 0.05))
+            max_trades = int(self._params.get("max_posiciones", 5))
+
+            lineas.append(f"Trades hoy: {total_hoy} ({wins_hoy}W/{loss_hoy}L) | P&L={pnl_hoy:+.2f}$")
+            lineas.append(f"Límites: max_posiciones={max_trades} | max_DD_dia={max_dd_dia:.0%}")
+            if mins_desde_ult is not None:
+                lineas.append(f"Último trade {par}: hace {mins_desde_ult} minutos")
+            else:
+                lineas.append(f"Sin trades recientes en {par}")
+
+            # Advertencias
+            if loss_hoy >= int(self._params.get("max_consecutive_losses", 3)):
+                lineas.append("⚠ ALERTA: Racha de pérdidas — operar con extrema cautela")
+            if total_hoy >= max_trades:
+                lineas.append("⚠ ALERTA: Límite de posiciones diarias alcanzado")
+
+            return "\n".join(lineas)
+
+        except Exception as e:
+            return f"Contexto de riesgo no disponible ({e})"
+
+    # ── Agente Decisor (deepseek-reasoner) ─────────────────────────────────
+
+    async def _agente_decision(
+        self, par: str, df,
+        briefing_txt: str, riesgo_txt: str
+    ) -> Optional[dict]:
+        """
+        Recibe el paquete consolidado (briefing + riesgo) y toma la decisión final.
+        Usa deepseek-reasoner (MODEL_DEEP) para razonamiento profundo.
+        El reasoner piensa internamente antes de producir el JSON final.
+        """
+        u        = df.iloc[-1]
+        precio   = float(u.get("Close", 0))
+        atr_val  = float(u.get("ATR_14", 0) or 0)
+        sesion   = self._market.sesion_actual()
+        adx_val  = float(u.get("ADX_14", 0) or 0)
+
+        min_conf = float(self._params.get("min_confidence", 0.55))
+        rr       = float(self._params.get("rr_ratio", 2.0))
+
+        # Paquete consolidado único — el reasoner recibe todo en un solo bloque
+        prompt = (
+            f"╔═══ SOLICITUD DE DECISIÓN — {par} ═══╗\n\n"
+            f"METADATA\n"
+            f"  Par       : {par}\n"
+            f"  Sesión    : {sesion.upper()}\n"
+            f"  Precio    : {precio:.5f}\n"
+            f"  ATR       : {atr_val:.5f}\n"
+            f"  ADX       : {adx_val:.1f}\n"
+            f"  RR target : {rr}\n"
+            f"  Conf min  : {min_conf:.0%}\n\n"
+            f"BRIEFING DE MERCADO (técnico + régimen)\n"
+            f"{'─'*45}\n"
+            f"{briefing_txt}\n\n"
+            f"CONTEXTO DE RIESGO (portfolio actual)\n"
+            f"{'─'*45}\n"
+            f"{riesgo_txt}\n\n"
+            f"╚═══════════════════════════════════════╝\n\n"
+            f"Analiza el briefing completo y decide si operar {par} ahora.\n"
+            f"Responde con JSON válido al final."
+        )
+
+        loop = asyncio.get_event_loop()
+        try:
+            resp = await loop.run_in_executor(
+                None,
+                lambda: self._ds.chat.completions.create(
+                    model=MODEL_DEEP,          # deepseek-reasoner — razonamiento profundo
+                    messages=[
+                        {"role": "system", "content": _SYS_DECISION},
+                        {"role": "user",   "content": prompt},
+                    ],
+                    max_tokens=1200,           # espacio para thinking + JSON final
+                    temperature=0.0,           # máxima determinismo en decisiones de riesgo
+                )
+            )
+        except Exception as e:
+            logger.warning(f"[Decisor-R1] {par} error API: {e}")
             return None
 
-        # Una sola estrategia: retorno directo
-        if len(candidatos) == 1:
-            return candidatos[0]
+        content = (resp.choices[0].message.content or "").strip()
 
-        # --- Ensemble con multiples candidatos ---
-        longs  = [c for c in candidatos if c["dir"] == "long"]
-        shorts = [c for c in candidatos if c["dir"] == "short"]
+        # El reasoner puede incluir texto de razonamiento antes del JSON
+        # Extraer el último bloque JSON del contenido
+        import re as _re
+        json_matches = _re.findall(r'\{[^{}]*"trade"[^{}]*\}', content, _re.DOTALL)
+        if not json_matches:
+            logger.debug(f"[Decisor-R1] {par} JSON no encontrado: {content[:120]}")
+            return None
+        try:
+            resultado = json.loads(json_matches[-1])  # usar el último (la decisión final)
+        except Exception:
+            logger.debug(f"[Decisor-R1] {par} JSON inválido: {json_matches[-1][:80]}")
+            return None
 
-        # Conflicto total: igual numero de long y short -> descartar
-        if len(longs) == len(shorts):
+        if not resultado.get("trade", False):
             logger.debug(
-                f"[{par}] Ensemble: conflicto directo {len(longs)}L vs {len(shorts)}S — descartado"
+                f"[Decisor] {par} PASS — {resultado.get('razon','sin razón')}"
             )
             return None
 
-        # Consenso: tomar el grupo mayoritario
-        consenso = longs if len(longs) > len(shorts) else shorts
-        dir_ganadora = "long" if len(longs) > len(shorts) else "short"
+        conf = float(resultado.get("conf", 0))
+        if conf < min_conf:
+            logger.debug(f"[Decisor] {par} conf={conf:.0%} < {min_conf:.0%} — descartado")
+            return None
 
-        # Confianza: promedio del grupo ganador + bonus por cada confirmacion extra
-        conf_promedio = sum(c["conf"] for c in consenso) / len(consenso)
-        bonus         = min(0.05 * (len(consenso) - 1), 0.15)  # +5% por extra, max +15%
-        conf_final    = min(round(conf_promedio + bonus, 3), 0.95)
+        direction = resultado.get("dir", "")
+        if direction not in ("long", "short"):
+            return None
 
-        # Estrategia representante: la de mayor confianza individual
-        mejor = max(consenso, key=lambda x: x["conf"]).copy()
-        mejor["conf"] = conf_final
-        mejor["dir"]  = dir_ganadora
-        mejor["par"]  = par
+        logger.info(
+            f"[Decisor] {par} TRADE {direction.upper()} conf={conf:.0%} — "
+            f"{resultado.get('razon','')}"
+        )
+        return {
+            "par":         par,
+            "dir":         direction,
+            "conf":        round(conf, 3),
+            "entry":       precio,
+            "razon":       resultado.get("razon", ""),
+            "estrategia":  "MultiAgente_v14_reasoner",
+            "atr":         atr_val,
+            "regime_score": 0.5,
+        }
 
-        # Nombre del ensemble para trazabilidad
-        nombres = sorted(set(c.get("estrategia", "?") for c in consenso))
-        if len(nombres) > 1:
-            mejor["estrategia"] = f"Ensemble({'+'.join(nombres)})"
-            mejor["razon"]      = (
-                f"Ensemble {'+'.join(nombres)} | "
-                f"conf_prom={conf_promedio:.2f} bonus={bonus:.2f} | "
-                f"{mejor.get('razon', '')}"
-            )
-            logger.debug(
-                f"[{par}] Ensemble: {mejor['estrategia']} {dir_ganadora.upper()} "
-                f"conf={conf_final:.2f} ({len(consenso)}/{len(candidatos)} acuerdan)"
-            )
-
-        return mejor
-
-    # ── Filtros ───────────────────────────────────────────────────────────────
+    # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _filtro_cooldown(self, par: str) -> bool:
         ultimo = self._cooldown.get(par)
@@ -367,162 +466,6 @@ class SignalAgent:
         activas = self._params.get("sesiones_activas", ["london", "overlap", "new_york"])
         return sesion in activas
 
-    def _filtro_tendencia_h4(
-        self,
-        dir_senal: str,
-        tendencia_h4: str,
-        par: str,
-        estrategia: str = "",
-    ) -> bool:
-        """
-        Filtro 3.5: alineacion H4 SOLO para EMA_Crossover (trend-following).
-        RSI_Bollinger y otras mean-reversion no se filtran por H4.
-        Ensemble que incluya EMA_Crossover aplica el filtro.
-        """
-        aplica = ("EMA_Crossover" in estrategia)
-        if not aplica:
-            return True
-        if tendencia_h4 == "rango":
-            return True
-        if tendencia_h4 == "up" and dir_senal == "long":
-            return True
-        if tendencia_h4 == "down" and dir_senal == "short":
-            return True
-        logger.debug(
-            f"[H4 filtro] {par} {estrategia} {dir_senal.upper()} "
-            f"descartada — tendencia H4 es {tendencia_h4.upper()}"
-        )
-        return False
-
-    def _calcular_regime(self, df, par: str):
-        if not self._regime:
-            return 0.5, "estable"
-        score = self._regime.calcular_regime_score(df)
-        if par not in _REGIME_HIST:
-            _REGIME_HIST[par] = deque(maxlen=20)
-        _REGIME_HIST[par].append(score)
-        transicion = self._regime.detectar_transicion(list(_REGIME_HIST[par]))
-        return score, transicion
-
-    def _aplicar_peso_regime(self, presenal, regime_score, transicion, par):
-        if not self._regime:
-            return presenal
-        estrategia = presenal.get("estrategia", "")
-
-        # Para ensembles, calcular peso promedio de las estrategias involucradas
-        if "Ensemble(" in estrategia:
-            nombres = estrategia.replace("Ensemble(", "").replace(")", "").split("+")
-            pesos = [self._regime.peso_estrategia(n.strip(), regime_score, transicion)
-                     for n in nombres]
-            peso = sum(pesos) / len(pesos)
-        else:
-            peso = self._regime.peso_estrategia(estrategia, regime_score, transicion)
-
-        conf_nueva = presenal["conf"] * peso
-        umbral = self._params.get("min_confidence", 0.30)
-        if conf_nueva < umbral:
-            logger.debug(
-                f"[Regime] {par} {estrategia} descartado: "
-                f"conf {presenal['conf']:.2f} * peso {peso:.2f} = {conf_nueva:.2f} < {umbral:.2f}"
-            )
-            return None
-        presenal["conf"]         = round(conf_nueva, 3)
-        presenal["regime_score"] = round(regime_score, 3)
-        return presenal
-
-    # ── DeepSeek ──────────────────────────────────────────────────────────────
-
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=8))
-    async def _consultar_deepseek(
-        self, par, df, presenal, regime_score=0.5, transicion="estable", df_h4=None
-    ):
-        u        = df.iloc[-1]
-        rsi_val  = u.get("RSI_14", 50)
-        atr_val  = u.get("ATR_14", 0)
-        ema20    = u.get("EMA_20", 0)
-        ema50    = u.get("EMA_50", 0)
-        precio   = float(u.get("Close", 0))
-        sesion   = self._market.sesion_actual()
-        tf       = self._params.get("signal_timeframe", "M15")
-        cierres  = ",".join(f"{x:.5f}" for x in df["Close"].tail(8).tolist())
-
-        if df_h4 is not None and len(df_h4) >= 5:
-            u4 = df_h4.iloc[-1]
-            rsi_h4   = u4.get("RSI_14", 50)
-            ema20_h4 = u4.get("EMA_20", 0)
-            ema50_h4 = u4.get("EMA_50", 0)
-            cierres_h4 = ",".join(f"{x:.5f}" for x in df_h4["Close"].tail(5).tolist())
-            h4_txt = (
-                f"H4: RSI={rsi_h4:.1f} EMA20={ema20_h4:.5f} "
-                f"EMA50={ema50_h4:.5f} Tend={presenal.get('tendencia_h4','?')}\n"
-                f"CierresH4:{cierres_h4}"
-            )
-        else:
-            h4_txt = f"H4: Tend={presenal.get('tendencia_h4','rango')}"
-
-        if regime_score < 0.30:
-            regime_txt = f"RANGO({regime_score:.2f})"
-        elif regime_score > 0.70:
-            regime_txt = f"TENDENCIA({regime_score:.2f})"
-        else:
-            regime_txt = f"TRANSICION({regime_score:.2f})"
-        if transicion != "estable":
-            regime_txt += f"->{transicion}"
-
-        prompt = (
-            f"Par:{par} Dir:{presenal['dir']} Sesion:{sesion}\n"
-            f"{tf}: RSI:{rsi_val:.1f} ATR:{atr_val:.5f} "
-            f"EMA20:{ema20:.5f} EMA50:{ema50:.5f}\n"
-            f"{h4_txt}\n"
-            f"Precio:{precio:.5f} Patron:{presenal['estrategia']}\n"
-            f"Regimen:{regime_txt} Cierres{tf}:{cierres}\n"
-            f"WR_min:{self._params.get('min_win_rate', 0.34):.0%} "
-            f"RR:{self._params.get('rr_ratio', 2.0)}\n\n"
-            f'Confirmas senal? JSON: {{"senal":bool,"dir":"long/short","conf":0-1,"razon":"max 15 palabras"}}'
-        )
-
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None,
-            lambda: self._ds.chat.completions.create(
-                model=MODEL_FAST,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                max_tokens=80,
-            ),
-        )
-
-        _content = (response.choices[0].message.content or "").strip()
-        if not _content:
-            conf_fb = float(presenal.get("conf", 0.40))
-            if conf_fb >= self._params.get("min_confidence", 0.30):
-                self._cooldown[par] = datetime.utcnow()
-                return {
-                    "par": par, "dir": presenal["dir"],
-                    "conf": conf_fb, "entry": precio,
-                    "razon": "tecnico+regimen (DS no disponible)",
-                    "estrategia": presenal["estrategia"],
-                    "atr": atr_val, "regime_score": regime_score,
-                }
-            return None
-
-        try:
-            resultado = json.loads(_content)
-        except Exception:
-            return None
-
-        confirmado = resultado.get("senal", resultado.get("signal", False))
-        if confirmado and resultado.get("conf", 0) >= self._params.get("min_confidence", 0.30):
-            self._cooldown[par] = datetime.utcnow()
-            return {
-                "par": par, "dir": resultado["dir"],
-                "conf": float(resultado["conf"]), "entry": precio,
-                "razon": resultado.get("razon", ""),
-                "estrategia": presenal["estrategia"],
-                "atr": atr_val, "regime_score": regime_score,
-            }
-        return None
-
     def _get_timestamp_actual(self):
         try:
             import backtest_harness as _bh
@@ -531,8 +474,8 @@ class SignalAgent:
                 return ts
         except Exception:
             pass
-        return datetime.now(timezone.utc)
+        return datetime.utcnow()
 
     def stop(self):
         self._running = False
-        logger.info("SignalAgent detenido")
+        logger.info("SignalAgent v14 detenido")

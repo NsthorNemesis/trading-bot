@@ -58,24 +58,29 @@ AGENT_MODULES = [
 ]
 
 # AJUSTAR SI: tu AuditAgent usa otro nombre para la calibración de fin de semana
-AUDIT_CALIBRATION_METHODS = [
-    "weekend_analysis", "run_calibration", "calibrar",
-    "weekly_analysis",  "analyze",         "calibrate",
-    "run_weekend",      "run_analysis",    "do_calibration", "_calibracion_diaria", "calibrar",
-]
+# Para backtest puro sin calibración dinámica: dejar vacío []
+# Con calibración activa: restaurar la lista completa
+AUDIT_CALIBRATION_METHODS = []   # DESACTIVADO para backtest largo — params fijos durante todo el run
+# AUDIT_CALIBRATION_METHODS = [
+#     "weekend_analysis", "run_calibration", "calibrar",
+#     "weekly_analysis",  "analyze",         "calibrate",
+#     "run_weekend",      "run_analysis",    "do_calibration",
+# ]
 
 # Horarios de calibración del AuditAgent (weekday UTC, hour, minute)
-# 5=sábado, 6=domingo — espejo de lo definido en audit_agent.py
+# 5=sábado, 6=domingo
+# Calibración SEMANAL: con menos de ~20 trades acumulados por semana,
+# la calibración diaria produce decisiones estadísticamente inválidas
+# (pausar pares por WR de 3 trades, cambiar sesiones por 1-2 operaciones).
+# Semanal garantiza suficiente muestra antes de tomar decisiones.
 CALIBRACION_SCHEDULE = [
     (5,  0, 0),   # Sábado 00:00 UTC
-    (5,  2, 0),   # Sábado 02:00 UTC
-    (5,  6, 0),   # Sábado 06:00 UTC
     (5,  8, 0),   # Sábado 08:00 UTC
     (6, 20, 0),   # Domingo 20:00 UTC
     (6, 22, 0),   # Domingo 22:00 UTC
 ]
 
-PARES_DEFAULT = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD"]
+PARES_DEFAULT = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD", "EUR_GBP"]
 
 TICK_SPREAD = {
     "EUR_USD": 0.00015,
@@ -335,12 +340,24 @@ class FakeOandaAPI:
             return endpoint.response
 
         # ── Pricing (no-stream: snapshot) ────────────────
+        # CRÍTICO: filtrar por los instrumentos solicitados en params.
+        # Sin esto _obtener_precio_actual("NZD_USD") devuelve EUR/USD price
+        # como prices[0] → el trailing mueve SL a niveles EUR (~1.17) en NZD
+        # → SL hit inmediato en todos los trades.
         if "pricing" in mod and "stream" not in cls.lower():
-            prices = {}
+            req_str  = getattr(endpoint, "params", {}).get("instruments", "")
+            req_set  = set(i.strip() for i in req_str.split(",") if i.strip())
+            prices   = []
             for inst, p in self._tracker._prices.items():
-                prices[inst] = {"asks": [{"price": str(p["ask"])}],
-                                "bids": [{"price": str(p["bid"])}]}
-            result = {"prices": list(prices.values())}
+                if not req_set or inst in req_set:
+                    prices.append({
+                        "instrument": inst,
+                        "asks": [{"price": str(p["ask"]), "liquidity": 1000000}],
+                        "bids": [{"price": str(p["bid"]), "liquidity": 1000000}],
+                        "status": "tradeable",
+                        "tradeable": True,
+                    })
+            result = {"prices": prices}
             endpoint.response = result
             return result
 
@@ -685,6 +702,9 @@ class BacktestHarness:
         except Exception:
             logging.info("  [patch] telegram.ext.Application omitido (metaclass conflict — normal)")
 
+        # openai.OpenAI: en modo backtest local usa DeepSeek real si hay DEEPSEEK_API_KEY.
+        # El RiskAgent cae a fallback matemático si la key no está configurada.
+
     def _detener_patches(self):
         for p in reversed(self._active_patches):
             try:
@@ -830,18 +850,46 @@ class BacktestHarness:
             market.datos_frescos = lambda par: True
             logging.info("  [patch] market_agent.datos_frescos -> always True (backtest)")
 
+            # CRITICO: sesion_actual() usa datetime.utcnow() del módulo (real clock).
+            # En backtest esto devuelve la hora REAL del PC, no la hora simulada,
+            # lo que bloquea todas las señales con el filtro de sesión.
+            # Solución: parchear sesion_actual() para usar el fake_time.
+            _market_ref = market
+            _sesion_fn  = market._sesion   # método estático, no usa self
+
+            def _sesion_fake():
+                t = get_fake_time()
+                if t is not None:
+                    return _sesion_fn(t.strftime("%Y-%m-%dT%H:%M:%SZ"))
+                return _sesion_fn(
+                    _real_datetime_cls.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+                )
+
+            _market_ref.sesion_actual = _sesion_fake
+            logging.info("  [patch] market_agent.sesion_actual -> fake_time (backtest)")
+
         _mkt = instancias.get('market_agent')
         if _mkt:
             _mkt.datos_frescos = lambda par: True
             _mkt.datos_frescos_patched = True
             logging.info("  [patch] datos_frescos -> True")
 
-        # Fix D: stub suscribir_señal si SignalAgent no lo tiene
-        # Sin esto el RiskExecutionAgent.run() crashea y _pos_abiertas nunca se limpia
-        _sa_stub = instancias.get('signal_agent')
-        if _sa_stub and not hasattr(_sa_stub, 'suscribir_señal'):
-            _sa_stub.suscribir_señal = lambda cb: None
-            logging.info("  [Fix D] suscribir_señal stub añadido a SignalAgent")
+        # Fix D / BACKTEST: suscribir_señal siempre = noop.
+        # Sin esto risk_agent.run() llama signal.suscribir_señal(self._on_senal)
+        # y re-registra el callback DESPUÉS del patch _on_senal_ext=None.
+        # Resultado: signal_agent.run() thread también abre trades → duplicados
+        # con estrategia="desconocida" y WR distorsionado.
+        # El harness poll llama evaluar()+procesar_senal() directamente y es
+        # la ÚNICA fuente de trades en backtest.
+        _sa_fix = instancias.get('signal_agent')
+        if _sa_fix:
+            _sa_fix.suscribir_señal = lambda cb: None
+            if hasattr(_sa_fix, '_on_senal_ext'):
+                _sa_fix._on_senal_ext = None
+            logging.info(
+                "  [BACKTEST] signal_agent.suscribir_señal = noop "
+                "(harness poll es el único generador de trades)"
+            )
 
         return instancias
 
@@ -877,6 +925,24 @@ class BacktestHarness:
                     logging.info(f"[AuditAgent] ✓ {nombre}() ejecutado")
                     self._calibraciones_log.append(
                         {"ts": ts.isoformat(), "metodo": nombre, "resultado": "ok"})
+                    # ── Recargar params en agentes activos post-calibración ──────
+                    # Sin esto, los cambios de calibrar() solo afectan al siguiente
+                    # backtest (el archivo cambia pero los agentes usan RAM antigua).
+                    try:
+                        _cal = BASE_DIR / "data" / "calibration" / "strategy_params.json"
+                        if _cal.exists():
+                            with open(_cal, encoding="utf-8") as _fh:
+                                _new_p = json.load(_fh)
+                            sa = agentes.get("signal_agent")
+                            if sa and hasattr(sa, "reload_params"):
+                                sa.reload_params(_new_p)
+                                logging.info("[AuditAgent] signal_agent params recargados post-calibración")
+                            ra = agentes.get("risk_execution_agent")
+                            if ra and hasattr(ra, "_params") and isinstance(ra._params, dict):
+                                ra._params.update(_new_p)
+                                logging.info("[AuditAgent] risk_agent params recargados post-calibración")
+                    except Exception as _re:
+                        logging.warning(f"[AuditAgent] No se pudo recargar params post-calibración: {_re}")
                     return
                 except Exception as e:
                     logging.warning(f"[AuditAgent] {nombre}() error: {e}")
@@ -939,6 +1005,33 @@ class BacktestHarness:
             fecha_fin = fecha_fin.replace(tzinfo=timezone.utc)
         fecha_inicio = fecha_fin - timedelta(weeks=self.n_semanas)
         logging.info(f"Período: {fecha_inicio.date()} → {fecha_fin.date()}")
+
+        # ── Cargar datos M15 completos para buffer dinámico ────────────────────
+        # El market_agent._buffer_m15 se preloada ESTATICAMENTE con las últimas
+        # 700 velas del archivo.  Para que signal_agent vea las condiciones
+        # históricas correctas (RSI extremos) hay que actualizar ese buffer
+        # con las velas M15 correspondientes al fake_time actual.
+        import bisect as _bisect
+        _m15_data   = {}   # par -> list[dict] ordenada por timestamp
+        _m15_ts_idx = {}   # par -> list[str]  para bisect_right
+
+        # Cargar TODOS los archivos M15 disponibles (no solo self.pares)
+        # para que funcione aunque pares_activos ≠ PARES_DEFAULT
+        for _m15_f in sorted(DATA_DIR.glob("*_M15.json")):
+            _pp = _m15_f.stem.replace("_M15", "")
+            try:
+                _m15_all = json.loads(_m15_f.read_text(encoding="utf-8"))
+                if isinstance(_m15_all, list) and len(_m15_all) > 10:
+                    _sorted = sorted(_m15_all, key=lambda x: x.get("timestamp", ""))
+                    _m15_data[_pp]   = _sorted
+                    _m15_ts_idx[_pp] = [v["timestamp"] for v in _sorted]
+                    logging.info(
+                        f"  [M15-DYN] {_pp}: {len(_sorted):,} velas "
+                        f"({_sorted[0]['timestamp'][:10]} -> "
+                        f"{_sorted[-1]['timestamp'][:10]})"
+                    )
+            except Exception as _me:
+                logging.warning(f"  [M15-DYN] {_pp}: no cargado ({_me})")
 
         # 2. Patches + imports
         logging.info("\n[2/4] Aplicando patches e importando agentes...")
@@ -1115,64 +1208,109 @@ class BacktestHarness:
 
                 # 1ms real por vela
                 _candle_idx += 1
-                if _candle_idx % 10 == 0:
+                if _candle_idx % 2 == 0:
+                    # ── Actualizar _buffer_m15 con velas históricas apropiadas ──
+                    # Slicear el M15 completo hasta el fake_time actual para que
+                    # signal_agent evalúe condiciones históricas reales (RSI extremos)
+                    # en lugar de ver siempre las últimas 80 velas del archivo.
+                    _mkt_agent = agentes.get('market_agent')
+                    if _mkt_agent and _m15_data and hasattr(_mkt_agent, '_buffer_m15'):
+                        _ts_str = ts_candle.strftime("%Y-%m-%dT%H:%M:%SZ")
+                        for _p, _candles in _m15_data.items():
+                            if _p not in _mkt_agent._buffer_m15:
+                                continue
+                            _ts_list = _m15_ts_idx.get(_p, [])
+                            _idx = _bisect.bisect_right(_ts_list, _ts_str)
+                            if _idx >= 30:   # VELAS_MIN_M15 — necesitamos al menos 30
+                                _slice = _candles[max(0, _idx - 700):_idx]
+                                buf = _mkt_agent._buffer_m15[_p]
+                                buf.clear()
+                                buf.extend(_slice)
                     _sa = agentes.get('signal_agent')
                     _ra = agentes.get('risk_execution_agent')
                     if _sa and _ra:
                         import asyncio as _ap, traceback as _tb
-                        for _pp in list((_sa._params or {}).get('pares_activos') or []):
-                            async def _poll(_p=_pp, _s=_sa, _r=_ra):
-                                try:
-                                    sn = await _s.evaluar(_p)
-                                except Exception as _ee:
-                                    logging.error(f'  [POLL evaluar {_p}] {_ee}')
-                                    return
-                                if not sn:
-                                    return
-                                _now_fake = get_fake_time()
-                                _last_sig = _pair_cooldown.get(_p)
-                                _cd_mins = float((_s._params or {}).get(
-                                    'cooldown_minutes',
-                                    (_s._params or {}).get('cooldown_minutos', 15)))
-                                if (_last_sig and _now_fake and
-                                        (_now_fake - _last_sig).total_seconds() < _cd_mins * 60):
-                                    return
-                                _pair_cooldown[_p] = _now_fake
-                                logging.info(
-                                    f'  [SENAL] {_p} {sn.get("dir","?").upper()} '
-                                    f'conf={sn.get("conf",0):.0%} '
-                                    f'est={sn.get("estrategia","?")}'
-                                )
-                                try:
-                                    _res = await _r.procesar_senal(sn)
-                                    if _res:
-                                        logging.info(
-                                            f'  [TRADE OK] {_p} ' +
-                                            str(sn.get("dir","?")).upper() +
-                                            f' id={_res.get("trade_id","?")}'
-                                        )
-                                        # Fix F: guardar estrategia → oanda_id para calibración
-                                        # oanda_id es el ID numérico del FakePositionTracker
-                                        # que coincide con el tid que usa check_fills al cerrar
-                                        _tid_new = str(_res.get("oanda_id", ""))
-                                        if _tid_new and _tid_new not in ("", "?"):
-                                            self.tracker._estrategia_por_trade[_tid_new] =                                                 sn.get("estrategia", "desconocida")
-                                    else:
-                                        _mp = (_r._params or {}).get("max_posiciones", "?")
-                                        logging.warning(
-                                            f'  [RECHAZADO] {_p}: procesar_senal=None '
-                                            f'capital={_r._capital:.2f} '
-                                            f'pos={len(_r._pos_abiertas)}/{_mp}'
-                                        )
-                                except Exception as _re:
-                                    logging.error(f'  [TRADE ERROR] {_p}: {_re}')
-                                    logging.error(_tb.format_exc())
+                        _tracker_ref = self.tracker   # referencia para fix entry price
+                        _pares_activos = list((_sa._params or {}).get('pares_activos') or [])
+
+                        # ── Evaluar todos los pares EN PARALELO con asyncio.gather ──
+                        # Antes: secuencial → deepseek-chat (par1) espera → deepseek-chat (par2) espera
+                        # Ahora: ambos pares lanzan sus calls a DS simultáneamente →
+                        #        tiempo total = max(t_par1, t_par2) en lugar de suma.
+                        # Reducción estimada: ~40-50% del tiempo total de backtest.
+                        async def _poll(_p, _s=_sa, _r=_ra, _tk=_tracker_ref):
                             try:
-                                _ap.run(_poll())
-                            except RuntimeError as _rte:
-                                logging.error(f'  [asyncio ERROR {_pp}]: {_rte}')
-                            except Exception as _oe:
-                                logging.error(f'  [OUTER ERROR {_pp}]: {_oe}')
+                                sn = await _s.evaluar(_p)
+                            except Exception as _ee:
+                                logging.error(f'  [POLL evaluar {_p}] {_ee}')
+                                return
+                            if not sn:
+                                return
+                            _now_fake = get_fake_time()
+                            _last_sig = _pair_cooldown.get(_p)
+                            _cd_mins = float((_s._params or {}).get(
+                                'cooldown_minutes',
+                                (_s._params or {}).get('cooldown_minutos', 15)))
+                            if (_last_sig and _now_fake and
+                                    (_now_fake - _last_sig).total_seconds() < _cd_mins * 60):
+                                return
+                            _pair_cooldown[_p] = _now_fake
+                            # Fix entry price: usar precio real del tracker, no
+                            # el close del M15 buffer (que puede ser horas anterior).
+                            _cur_prices = _tk._prices.get(_p, {})
+                            if _cur_prices:
+                                _dir = sn.get("dir", "long")
+                                _real_entry = (_cur_prices.get("ask", sn.get("entry", 1.0))
+                                               if _dir == "long"
+                                               else _cur_prices.get("bid", sn.get("entry", 1.0)))
+                                sn["entry"] = _real_entry
+                            logging.info(
+                                f'  [SENAL] {_p} {sn.get("dir","?").upper()} '
+                                f'conf={sn.get("conf",0):.0%} '
+                                f'est={sn.get("estrategia","?")} '
+                                f'entry={sn.get("entry",0):.5f} '
+                                f'regime={sn.get("regime_score",0):.2f}'
+                            )
+                            try:
+                                _res = await _r.procesar_senal(sn)
+                                if _res:
+                                    logging.info(
+                                        f'  [TRADE OK] {_p} ' +
+                                        str(sn.get("dir","?")).upper() +
+                                        f' id={_res.get("trade_id","?")}'
+                                    )
+                                    # Guardar estrategia → oanda_id para calibración
+                                    _tid_new = str(_res.get("oanda_id", ""))
+                                    if _tid_new and _tid_new not in ("", "?"):
+                                        self.tracker._estrategia_por_trade[_tid_new] = \
+                                            sn.get("estrategia", "desconocida")
+                                else:
+                                    _mp = (_r._params or {}).get("max_posiciones", "?")
+                                    logging.warning(
+                                        f'  [RECHAZADO] {_p}: procesar_senal=None '
+                                        f'capital={_r._capital:.2f} '
+                                        f'pos={len(_r._pos_abiertas)}/{_mp}'
+                                    )
+                            except Exception as _re:
+                                logging.error(f'  [TRADE ERROR] {_p}: {_re}')
+                                logging.error(_tb.format_exc())
+
+                        # Lanzar todos los pares en paralelo dentro de un único event loop
+                        async def _poll_todos():
+                            await _ap.gather(*[_poll(_pp) for _pp in _pares_activos])
+
+                        try:
+                            _ap.run(_poll_todos())
+                        except RuntimeError as _rte:
+                            # Si hay un event loop activo (poco probable), fallback secuencial
+                            logging.error(f'  [asyncio gather ERROR]: {_rte} — fallback secuencial')
+                            for _pp in _pares_activos:
+                                try:
+                                    _ap.run(_poll(_pp))
+                                except Exception as _oe2:
+                                    logging.error(f'  [OUTER ERROR {_pp}]: {_oe2}')
+                        except Exception as _oe:
+                            logging.error(f'  [OUTER ERROR gather]: {_oe}')
                 _REAL_SLEEP(0)  # yield GIL; sin delay real (backtest acelerado)
 
             # ── Métricas de la semana ──────────────────────
@@ -1201,6 +1339,15 @@ class BacktestHarness:
                 self.tick_queue.put_nowait(None)
             except queue.Full:
                 break
+
+        # Detener agentes con stop() — evita flood de "cannot schedule" al cerrar asyncio
+        for key, agent in agentes.items():
+            if hasattr(agent, "stop"):
+                try:
+                    agent.stop()
+                    logging.debug(f"  [shutdown] {key}.stop() llamado")
+                except Exception:
+                    pass
 
         # Esperar threads
         for t in threads:
@@ -1256,8 +1403,8 @@ class BacktestHarness:
         logging.info(f"  {'✅' if pf_g >= 1.4 else '❌'} PF ≥ 1.4:    {pf_g:.2f}")
         logging.info(f"  {'✅' if dd_g < 6 else '❌'} MaxDD < 6%:  {dd_g:.1f}%")
         listo = wr_g >= 55 and pf_g >= 1.4 and dd_g < 6
-        logging.info("\n  " + ("🚀 LISTO para considerar live trading"
-                               if listo else "⏸ Continuar paper trading"))
+        logging.info("\n  " + ("LISTO para considerar live trading"
+                               if listo else "Continuar paper trading"))
 
         resultado = {
             "metadata": {
@@ -1434,13 +1581,27 @@ class BacktestHarness:
 
         # ── Ajuste dinámico de parámetros ─────────────────────────────────────
 
+        # Parámetros protegidos: nunca se auto-ajustan (valores manuales del analista)
+        _PROTECTED_KEYS = {"min_sl_pips", "max_sl_pips", "adx_max_rsi_bollinger", "sl_atr_mult"}
+
         # min_confidence: bajar si el mercado fue difícil (WR < 45%)
-        min_conf = params_base.get("min_confidence", 0.3)
-        if wr_global < 0.45:
-            min_conf = max(0.25, min_conf - 0.05)
-            logging.info(f"[CAL-ROLLING] WR bajo → min_confidence ajustado a {min_conf}")
+        # Floor en 0.40 — proteger el valor de checkpoint establecido manualmente.
+        # NOTA: No ajustar si la ventana tiene menos de 5 trades — esto evita
+        # penalizar falsamente cuando el circuit breaker bloqueó el trading y
+        # la ventana de 4 semanas quedó vacía (WR=0% por falta de trades).
+        _MIN_CONFIDENCE_FLOOR = 0.40
+        min_conf = params_base.get("min_confidence", 0.40)
+        _trades_en_ventana = len(trades_ventana)
+        if _trades_en_ventana < 5:
+            logging.info(
+                f"[CAL-ROLLING] Solo {_trades_en_ventana} trades en ventana — "
+                f"min_confidence sin cambio (evitar ajuste con muestra insuficiente)"
+            )
+        elif wr_global < 0.45:
+            min_conf = max(_MIN_CONFIDENCE_FLOOR, min_conf - 0.05)
+            logging.info(f"[CAL-ROLLING] WR bajo → min_confidence ajustado a {min_conf} (floor={_MIN_CONFIDENCE_FLOOR})")
         elif wr_global >= 0.60:
-            min_conf = min(0.50, min_conf + 0.05)
+            min_conf = min(0.55, min_conf + 0.05)
             logging.info(f"[CAL-ROLLING] WR alto → min_confidence ajustado a {min_conf}")
 
         # riesgo_pct: reducir si drawdown > 4%
@@ -1472,6 +1633,10 @@ class BacktestHarness:
                 f"Estrategias activas: {', '.join(estrats_activas)}"
             ),
         }
+        # Restaurar parámetros protegidos — sobrescriben cualquier ajuste automático
+        for _pk in _PROTECTED_KEYS:
+            if _pk in params_base:
+                calibracion[_pk] = params_base[_pk]
 
         # ── Guardar ───────────────────────────────────────────────────────────
         cal_out = BASE_DIR / "data" / "calibration" / "strategy_params.json"
@@ -1485,34 +1650,19 @@ class BacktestHarness:
         logging.info(f"  Ventana:       últimas {ventana} semanas")
         logging.info(f"  WR ventana:    {wr_global:.1%}")
         logging.info(f"  PF ventana:    {pf_global:.2f}")
-        logging.info(f"  Estrategias:   {', '.join(estrats_activas)}")
-        logging.info(f"  min_conf:      {min_conf}")
-        logging.info(f"  riesgo_pct:    {riesgo:.4f}")
-        logging.info("\n  ▶ Para usar esta calibración en live:")
-        logging.info("    python main.py")
+        logging.info("  Estrategias:   " + ", ".join(estrats_activas))
+        logging.info(f"  WR global cal: {wr_global:.1%}")
+        logging.info(f"  Score:         {score_nuevo:.4f}")
         logging.info("═" * 60)
+        return calibracion
 
 
-# ===============================================================
-# MAIN
-# ===============================================================
-def main():
-    parser = argparse.ArgumentParser(
-        description="Backtest con agentes reales — Trading Bot v11"
-    )
-    parser.add_argument("--semanas", type=int,   default=52,    help="Semanas (default: 52 = 1 año)")
-    parser.add_argument("--capital", type=float, default=200.0, help="Capital inicial (default: 200)")
-    parser.add_argument("--par",     type=str,   default=None,  help="Un solo par, ej: EUR_USD")
-    args = parser.parse_args()
-
-    pares = [args.par] if args.par else None
-    harness = BacktestHarness(
-        capital=args.capital,
-        n_semanas=args.semanas,
-        pares=pares,
-    )
-    harness.correr()
-
-
+# ── Entry point ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Backtest Harness — Trading Bot v11")
+    parser.add_argument("--semanas", type=int, default=8, help="Número de semanas a simular")
+    args = parser.parse_args()
+    harness = BacktestHarness(n_semanas=args.semanas)
+    harness.correr()
+    harness.ejecutar()

@@ -277,6 +277,51 @@ def _nivel1():
     except Exception as e:
         res.append(_chk(1, "Git status", "warn", f"No se pudo verificar: {e}"))
 
+    # ── v14: suscribir_señal presente en signal_agent ──────────────────────
+    signal_file = BOT_ROOT / "agents" / "signal_agent" / "signal_agent.py"
+    try:
+        sig_src = signal_file.read_text(encoding="utf-8")
+        if "def suscribir_señal" not in sig_src:
+            res.append(_chk(1, "v14 — suscribir_señal", "fail",
+                "El método suscribir_señal() NO existe en signal_agent.py.\n"
+                "El risk_agent se suscribe en el arranque con self._signal.suscribir_señal(...)\n"
+                "Sin este método: AttributeError silencioso → 0 trades ejecutados.",
+                "Agregar def suscribir_señal(self, cb): self._suscriptores_senal.append(cb)"))
+        else:
+            # También verificar que el loop lo llama
+            if "await cb(senal)" in sig_src or "await cb(" in sig_src:
+                res.append(_chk(1, "v14 — suscribir_señal", "pass",
+                    "suscribir_señal() presente y el loop notifica a los suscriptores"))
+            else:
+                res.append(_chk(1, "v14 — suscribir_señal", "warn",
+                    "suscribir_señal() existe pero el loop run() no llama a los callbacks",
+                    "Agregar 'for cb in self._suscriptores_senal: await cb(senal)' en run()"))
+    except Exception as e:
+        res.append(_chk(1, "v14 — suscribir_señal", "warn", f"No se pudo leer signal_agent: {e}"))
+
+    # ── v14: arquitectura briefing (no tecnico/regimen separados) ──────────
+    try:
+        sig_src = sig_src if 'sig_src' in dir() else signal_file.read_text(encoding="utf-8")
+        has_briefing  = "_agente_briefing" in sig_src
+        has_old_tecnico = "_agente_tecnico" in sig_src
+        has_old_regimen = "_agente_regimen" in sig_src
+        has_reasoner  = "deepseek-reasoner" in sig_src or "MODEL_DEEP" in sig_src
+        if not has_briefing:
+            res.append(_chk(1, "v14 — arquitectura briefing", "fail",
+                "_agente_briefing() no encontrado — signal_agent puede ser v13 o anterior",
+                "Restaurar signal_agent.py desde backup checkpoint_v14_BASE_EXPANSION"))
+        elif has_old_tecnico or has_old_regimen:
+            res.append(_chk(1, "v14 — arquitectura briefing", "warn",
+                f"_agente_briefing presente pero también quedan métodos v13: "
+                f"{'_agente_tecnico ' if has_old_tecnico else ''}"
+                f"{'_agente_regimen' if has_old_regimen else ''}"))
+        else:
+            reasoner_txt = " | decisor=deepseek-reasoner" if has_reasoner else " | ⚠ MODEL_DEEP no detectado"
+            res.append(_chk(1, "v14 — arquitectura briefing", "pass",
+                f"Arquitectura v14 correcta: _agente_briefing + _agente_decision{reasoner_txt}"))
+    except Exception as e:
+        res.append(_chk(1, "v14 — arquitectura briefing", "warn", f"No se pudo verificar: {e}"))
+
     return res
 
 def _nivel2():
@@ -345,6 +390,51 @@ except Exception as e:
                 "Revisar strategies/__init__.py"))
     except Exception as e:
         res.append(_chk(2, "Carga de estrategias", "warn", f"No se pudo verificar: {e}"))
+
+    # ── v14: MODEL_DEEP = deepseek-reasoner en settings ───────────────────
+    settings_file = BOT_ROOT / "config" / "settings.py"
+    try:
+        cfg_src = settings_file.read_text(encoding="utf-8")
+        if "deepseek-reasoner" in cfg_src:
+            # Extraer la línea exacta
+            for line in cfg_src.splitlines():
+                if "deepseek-reasoner" in line:
+                    res.append(_chk(2, "v14 — MODEL_DEEP (deepseek-reasoner)", "pass",
+                        f"Configurado correctamente: {line.strip()}"))
+                    break
+        else:
+            res.append(_chk(2, "v14 — MODEL_DEEP (deepseek-reasoner)", "fail",
+                "MODEL_DEEP no apunta a 'deepseek-reasoner' en config/settings.py\n"
+                "El decisor usará deepseek-chat en lugar de razonamiento profundo.",
+                "Añadir MODEL_DEEP = 'deepseek-reasoner' en config/settings.py"))
+    except Exception as e:
+        res.append(_chk(2, "v14 — MODEL_DEEP (deepseek-reasoner)", "warn",
+            f"No se pudo verificar settings.py: {e}"))
+
+    # ── v14: canal señal→riesgo (_suscriptores_senal inicializado) ─────────
+    try:
+        sig_src_l = (BOT_ROOT / "agents" / "signal_agent" / "signal_agent.py"
+                     ).read_text(encoding="utf-8")
+        risk_src  = (BOT_ROOT / "agents" / "risk_execution_agent" /
+                     "risk_execution_agent.py").read_text(encoding="utf-8")
+        has_init   = "_suscriptores_senal" in sig_src_l
+        has_method = "def suscribir_señal" in sig_src_l
+        has_call   = "suscribir_señal" in risk_src
+        if has_init and has_method and has_call:
+            res.append(_chk(2, "v14 — canal señal→riesgo", "pass",
+                "signal_agent inicializa _suscriptores_senal, expone suscribir_señal() "
+                "y risk_execution_agent la llama al arranque"))
+        else:
+            missing = []
+            if not has_init:   missing.append("_suscriptores_senal no inicializado en __init__")
+            if not has_method: missing.append("def suscribir_señal() ausente")
+            if not has_call:   missing.append("risk_agent no llama suscribir_señal()")
+            res.append(_chk(2, "v14 — canal señal→riesgo", "fail",
+                "El canal de señales está roto:\n" + "\n".join(missing),
+                "Ver signal_agent.py — agregar suscribir_señal() y llamarla desde risk_agent"))
+    except Exception as e:
+        res.append(_chk(2, "v14 — canal señal→riesgo", "warn",
+            f"No se pudo verificar: {e}"))
 
     # Simulación hot-reload (el bug de ayer)
     script3 = f"""
@@ -420,8 +510,8 @@ def _nivel3():
 
     # Errores en log — desde el último arranque, excluyendo todos los errores de Telegram
     out3, _ = _ssh(
-        "awk '/Estrategias cargadas/{count=0; in_s=1} "
-        "in_s && /\\[ERROR\\]/ && !/telegram/{count++} "
+        "awk '/SignalAgent v14/{count=0; in_s=1} "
+        "in_s && /\\[ERROR\\]/ && !/telegram/ && !/Stream error/ && !/oandapyV20/ && !/401/{count++} "
         "END{print count+0}' "
         "/root/trading_bot_v11/logs/trading_bot.log 2>/dev/null || echo 0"
     )
@@ -461,6 +551,66 @@ def _nivel3():
         res.append(_chk(3, "Git sincronizado local↔VPS", "warn",
             f"Local: {local_commit} | VPS: {vps_commit} — desincronizados",
             "ssh VPS + git fetch origin && git reset --hard origin/master"))
+
+    # ── v14: SignalAgent v14 arrancó en el VPS ─────────────────────────────
+    LOG = "/root/trading_bot_v11/logs/trading_bot.log"
+    out6, _ = _ssh(f"grep 'SignalAgent v14' {LOG} 2>/dev/null | tail -1")
+    if "v14" in out6 and "briefing=" in out6:
+        res.append(_chk(3, "v14 — SignalAgent v14 en VPS", "pass", out6.strip()[:200]))
+    elif out6.strip():
+        res.append(_chk(3, "v14 — SignalAgent v14 en VPS", "warn",
+            f"Línea v14 encontrada pero incompleta: {out6.strip()[:120]}"))
+    else:
+        res.append(_chk(3, "v14 — SignalAgent v14 en VPS", "fail",
+            "No se encontró 'SignalAgent v14' en el log — el VPS puede estar corriendo v13 u anterior",
+            "Ejecutar deploy_vps.ps1 para subir el signal_agent.py v14"))
+
+    # ── v14: suscribir_señal registrada en VPS (sin AttributeError) ────────
+    out7, _ = _ssh(
+        f"grep -c 'suscribir_señal\\|AttributeError.*suscrib' {LOG} 2>/dev/null || echo 0"
+    )
+    err_out, _ = _ssh(
+        f"grep 'AttributeError.*suscrib\\|has no attribute.*suscrib' {LOG} 2>/dev/null | tail -3"
+    )
+    if err_out.strip():
+        res.append(_chk(3, "v14 — sin AttributeError suscribir_señal", "fail",
+            f"¡Detectado el bug! risk_agent falló al suscribirse:\n{err_out.strip()[:300]}\n"
+            "→ 0 trades ejecutados aunque el bot esté corriendo",
+            "Desplegar signal_agent.py con suscribir_señal() y reiniciar"))
+    else:
+        res.append(_chk(3, "v14 — sin AttributeError suscribir_señal", "pass",
+            "Sin errores de suscripción en el log — canal señal→riesgo operativo"))
+
+    # ── v14: actividad del decisor (deepseek-reasoner) ─────────────────────
+    out8, _ = _ssh(f"grep 'Decisor-R1' {LOG} 2>/dev/null | tail -2")
+    if out8.strip():
+        last_line = out8.strip().splitlines()[-1]
+        res.append(_chk(3, "v14 — Decisor-R1 (deepseek-reasoner)", "pass",
+            f"Última actividad del reasoner:\n{last_line.strip()[:200]}"))
+    else:
+        out8b, _ = _ssh(f"grep 'agente_decision\\|_agente_briefing\\|briefing.*riesgo' {LOG} 2>/dev/null | tail -1")
+        if out8b.strip():
+            res.append(_chk(3, "v14 — Decisor-R1 (deepseek-reasoner)", "warn",
+                f"Sin líneas 'Decisor-R1' aún — bot activo pero fuera de sesión o ADX bajo\n{out8b.strip()[:160]}"))
+        else:
+            res.append(_chk(3, "v14 — Decisor-R1 (deepseek-reasoner)", "warn",
+                "Sin actividad del decisor en el log — esperar apertura de sesión London (07:00 UTC)"))
+
+    # ── v14: sesión activa según strategy_params.json en VPS ───────────────
+    out9, _ = _ssh(
+        "python3 -c \""
+        "import json; p=json.load(open('/root/trading_bot_v11/data/calibration/strategy_params.json'));"
+        "print('activas:', p.get('sesiones_activas',[])); "
+        "print('timeout:', p.get('max_trade_hours','?'), 'h'); "
+        "print('adx_min:', p.get('adx_min_operar','?'))"
+        "\" 2>&1"
+    )
+    if "activas:" in out9:
+        res.append(_chk(3, "v14 — strategy_params.json en VPS", "pass", out9.strip()))
+    else:
+        res.append(_chk(3, "v14 — strategy_params.json en VPS", "warn",
+            f"No se pudo leer params del VPS: {out9[:120]}",
+            "Verificar que data/calibration/strategy_params.json existe en el VPS"))
 
     return res
 
@@ -566,7 +716,12 @@ def _monitor_fetch():
         f"echo '|||CICLO|||'; grep 'Parametros:' {LOG} 2>/dev/null | tail -1; "
         f"echo '|||TRADE|||'; grep 'TRADE OK\\|TP.*PnL\\|cerrado.*TP\\|cerrado.*SL' {LOG} 2>/dev/null | tail -1; "
         f"echo '|||ERR|||'; tail -200 {LOG} 2>/dev/null | grep '\\[ERROR\\]' | grep -cv 'telegram' || echo 0; "
-        f"echo '|||DS|||'; grep -i 'deepseek\\|DeepSeek' {LOG} 2>/dev/null | tail -1"
+        f"echo '|||DS|||'; grep -i 'deepseek\\|DeepSeek' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||V14|||'; grep 'SignalAgent v14' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||BRIEFING|||'; grep 'lanzando briefing\\|AgenteBriefing\\|_agente_briefing' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||REASONER|||'; grep 'Decisor-R1' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||SESION|||'; grep 'sesion_abierta\\|Apertura sesion\\|sesion.*london\\|sesion.*overlap' {LOG} 2>/dev/null | tail -1; "
+        f"echo '|||SUSCRIP|||'; grep -c 'AttributeError.*suscrib\\|has no attribute.*suscrib' {LOG} 2>/dev/null || echo 0"
     )
     raw, rc = _ssh(cmd, timeout=12)
 
@@ -650,6 +805,52 @@ def _monitor_fetch():
                   "detail": ds[-90:] if ds else "Sin llamadas recientes en el log",
                   "ago": _time_ago(ts) if ts else "—"})
 
+    # ── Items v14 ──────────────────────────────────────────────────────────
+
+    # 9. SignalAgent v14 arrancó
+    v14   = sections.get("V14", "").strip()
+    ts    = _parse_log_ts(v14)
+    items.append({"label": "v14 — SignalAgent arrancado", "icon": "bi-cpu",
+                  "status": "ok" if ("briefing=" in v14 and "decisor=" in v14) else ("warn" if v14 else "error"),
+                  "detail": v14[-110:] if v14 else "No se encontró 'SignalAgent v14' — puede ser v13 en el VPS",
+                  "ago": _time_ago(ts) if ts else "—"})
+
+    # 10. Briefing agent activo
+    brf   = sections.get("BRIEFING", "").strip()
+    ts    = _parse_log_ts(brf)
+    ago_s = int((datetime.utcnow() - ts).total_seconds()) if ts else 9999
+    items.append({"label": "v14 — AgenteBriefing (último ciclo)", "icon": "bi-chat-dots",
+                  "status": "ok" if (ts and ago_s < 3600) else ("warn" if (ts and ago_s < 86400) else "neutral"),
+                  "detail": brf[-110:] if brf else "Sin actividad de briefing — normal fuera de sesión London/Overlap",
+                  "ago": _time_ago(ts) if ts else "—"})
+
+    # 11. Decisor-R1 (deepseek-reasoner)
+    r1    = sections.get("REASONER", "").strip()
+    ts    = _parse_log_ts(r1)
+    ago_s = int((datetime.utcnow() - ts).total_seconds()) if ts else 9999
+    items.append({"label": "v14 — Decisor-R1 (deepseek-reasoner)", "icon": "bi-diagram-3",
+                  "status": "ok" if (ts and ago_s < 86400) else "neutral",
+                  "detail": r1[-110:] if r1 else "Sin decisiones de reasoner — normal fuera de sesión",
+                  "ago": _time_ago(ts) if ts else "—"})
+
+    # 12. Bug suscribir_señal — detección automática
+    try:
+        n_suscrib_err = int(sections.get("SUSCRIP", "0").strip().split()[0])
+    except Exception:
+        n_suscrib_err = -1
+    if n_suscrib_err > 0:
+        items.append({"label": "v14 — Bug suscribir_señal", "icon": "bi-exclamation-octagon-fill",
+                      "status": "error",
+                      "detail": f"¡CRÍTICO! Detectados {n_suscrib_err} AttributeError de suscribir_señal.\n"
+                                "El risk_agent nunca recibió señales → 0 trades ejecutados.\n"
+                                "Fix: desplegar signal_agent.py con suscribir_señal() y reiniciar.",
+                      "ago": ""})
+    else:
+        items.append({"label": "v14 — Bug suscribir_señal", "icon": "bi-shield-check",
+                      "status": "ok" if n_suscrib_err == 0 else "warn",
+                      "detail": "Sin AttributeError de suscripción — canal señal→riesgo operativo",
+                      "ago": ""})
+
     return items
 
 @app.route("/monitor")
@@ -688,10 +889,11 @@ def harness_run():
         cmd_str = " ".join(cmd[2:])
         yield f"data: {json.dumps({'line': 'Iniciando harness: ' + cmd_str})}\n\n"
         try:
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, cwd=str(BOT_ROOT), bufsize=1,
-                encoding="utf-8", errors="replace"
+                encoding="utf-8", errors="replace", env=env
             )
             for raw_line in proc.stdout:
                 line = raw_line.rstrip()

@@ -19,7 +19,7 @@ from typing import Callable, Optional
 import pandas as pd
 from ta.volatility import AverageTrueRange, BollingerBands
 from ta.momentum import RSIIndicator
-from ta.trend import EMAIndicator, MACD
+from ta.trend import EMAIndicator, MACD, ADXIndicator
 from tenacity import retry, stop_after_attempt, wait_exponential
 import oandapyV20
 import oandapyV20.endpoints.pricing as pricing
@@ -190,6 +190,11 @@ class MarketAgent:
         while self._running:
             try:
                 await self._streaming_loop()
+            except RuntimeError as e:
+                if "cannot schedule" in str(e) or "shutdown" in str(e).lower():
+                    break
+                logger.error(f"Stream error: {e} — reintentando en 5s")
+                await asyncio.sleep(5)
             except Exception as e:
                 logger.error(f"Stream error: {e} — reintentando en 5s")
                 await asyncio.sleep(5)
@@ -317,6 +322,8 @@ class MarketAgent:
 
     async def _precargar_m15_h4(self, silencioso: bool = False):
         """Precarga / refresca buffers M15 y H4 desde archivo o API."""
+        if not self._running:
+            return
         from config.settings import HIST_DIR
         HIST_DIR.mkdir(parents=True, exist_ok=True)
         loop = asyncio.get_event_loop()
@@ -334,50 +341,101 @@ class MarketAgent:
             logger.info("Precargando historial M15 y H4...")
 
         for par in self._pares:
+            if not self._running:
+                return
             nombre = PARES_DISPLAY.get(par, par)
 
             # ── M15 ──────────────────────────────────────────────────────────
             arch_m15 = HIST_DIR / f"{par}_M15.json"
             try:
                 usar_cache = self._cache_valida(arch_m15, max_age=MAX_CACHE_AGE)
-                if usar_cache and not silencioso:
-                    velas = json.loads(arch_m15.read_text())
+                velas_archivo = None
+
+                # Intentar leer del archivo (cache fresco O como fallback)
+                if arch_m15.exists() and arch_m15.stat().st_size > 10:
+                    try:
+                        velas_archivo = json.loads(arch_m15.read_text())
+                        if not isinstance(velas_archivo, list) or len(velas_archivo) < 5:
+                            velas_archivo = None
+                    except Exception:
+                        velas_archivo = None
+
+                if usar_cache and not silencioso and velas_archivo:
+                    # Cache fresco y válido → usar directamente
+                    velas = velas_archivo
+                    fuente = "cache"
                 else:
+                    # Cache vencido o primer run → intentar API
                     velas = await loop.run_in_executor(
                         None, self._descargar_velas, par, "M15", desde_m15
                     )
-                    arch_m15.write_text(json.dumps(velas))
+                    fuente = "API"
+                    if velas:
+                        # Solo sobreescribir si la API devolvió datos reales
+                        arch_m15.write_text(json.dumps(velas))
+                    elif velas_archivo:
+                        # API vacía → usar archivo aunque esté vencido
+                        velas = velas_archivo
+                        fuente = "cache-fallback"
 
                 self._buffer_m15[par].clear()
                 for v in velas[-BUFFER_M15:]:
                     self._buffer_m15[par].append(v)
 
                 if not silencioso:
-                    fuente = "cache" if usar_cache else "API"
                     logger.info(
                         f"  {nombre}: {len(self._buffer_m15[par])} velas M15 ({fuente})"
                     )
+            except RuntimeError as e:
+                # Silently ignore shutdown errors (harness teardown)
+                if "cannot schedule" in str(e) or "shutdown" in str(e).lower():
+                    return
+                logger.error(f"  Error M15 {par}: {e}")
             except Exception as e:
                 logger.error(f"  Error M15 {par}: {e}")
 
             # ── H4 ───────────────────────────────────────────────────────────
+            if not self._running:
+                return
             arch_h4 = HIST_DIR / f"{par}_H4.json"
             try:
                 usar_cache = self._cache_valida(arch_h4, max_age=MAX_CACHE_AGE)
-                if usar_cache and not silencioso:
-                    velas = json.loads(arch_h4.read_text())
+                velas_archivo = None
+
+                # Intentar leer del archivo (cache fresco O como fallback)
+                if arch_h4.exists() and arch_h4.stat().st_size > 10:
+                    try:
+                        velas_archivo = json.loads(arch_h4.read_text())
+                        if not isinstance(velas_archivo, list) or len(velas_archivo) < 5:
+                            velas_archivo = None
+                    except Exception:
+                        velas_archivo = None
+
+                if usar_cache and not silencioso and velas_archivo:
+                    velas = velas_archivo
+                    fuente = "cache"
                 else:
                     velas = await loop.run_in_executor(
                         None, self._descargar_velas, par, "H4", desde_h4
                     )
-                    arch_h4.write_text(json.dumps(velas))
+                    fuente = "API"
+                    if velas:
+                        arch_h4.write_text(json.dumps(velas))
+                    elif velas_archivo:
+                        velas = velas_archivo
+                        fuente = "cache-fallback"
 
                 self._buffer_h4[par].clear()
                 for v in velas[-BUFFER_H4:]:
                     self._buffer_h4[par].append(v)
 
                 if not silencioso:
-                    logger.info(f"  {nombre}: {len(self._buffer_h4[par])} velas H4")
+                    logger.info(f"  {nombre}: {len(self._buffer_h4[par])} velas H4 ({fuente})")
+            except RuntimeError as e:
+                # Silently ignore shutdown errors (harness teardown)
+                if "cannot schedule" in str(e) or "shutdown" in str(e).lower():
+                    return
+                logger.error(f"  Error H4 {par}: {e}")
             except Exception as e:
                 logger.error(f"  Error H4 {par}: {e}")
 
@@ -458,6 +516,14 @@ class MarketAgent:
         df["MACD"]     = macd_ind.macd()
         df["MACD_SIG"] = macd_ind.macd_signal()
         df["MACD_DIF"] = macd_ind.macd_diff()
+        # ADXIndicator necesita ≥ window+1 filas — fallback a 0 si hay pocas velas.
+        # Con ADX_14=0, el filtro adx_max_hammer no bloquea (0 < cualquier umbral).
+        try:
+            df["ADX_14"] = ADXIndicator(
+                df["High"], df["Low"], df["Close"], window=14, fillna=True
+            ).adx()
+        except Exception:
+            df["ADX_14"] = 0.0
 
         o = df["Open"];  h = df["High"]
         l = df["Low"];   c = df["Close"]

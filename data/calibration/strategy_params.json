@@ -1,48 +1,39 @@
 {
-  "_comentario": "Config validada backtest 2026-05-15. RSI_Bollinger. AUD_USD+NZD_USD. Cooldown 45min. riesgo 2%. WR=50.0% PnL=+$106.47 (62 trades, 3.5 semanas).",
-  "_historial": "Anterior: cooldown 45min riesgo 1.5% | WR=49.0% PnL=+$81.14 (51 trades). Anterior2: cooldown 240min | WR=48.6% PnL=+$54.51 (37 trades).",
+  "_comentario": "v14_optimizado — EUR+GBP+CHF | ADX>23 | London+Overlap only | timeout=12h | backtest ROI +115% 52w — 2026-05-19",
   "signal_timeframe": "M15",
-  "estrategias_activas": [
-    "RSI_Bollinger"
-  ],
-  "estrategias_pausadas": [
-    "RSI_Divergence",
-    "EMA_Crossover",
-    "Hammer",
-    "Doji",
-    "Engulfing"
-  ],
-  "pares_activos": [
-    "AUD_USD",
-    "NZD_USD"
-  ],
-  "pares_pausados": [
-    "EUR_USD",
-    "GBP_USD",
-    "USD_JPY",
-    "USD_CHF",
-    "USD_CAD",
-    "EUR_GBP"
-  ],
-  "sl_atr_mult": 2.0,
-  "min_sl_pips": 10,
-  "max_sl_pips": 50,
+  "estrategias_activas": ["EMA_Crossover", "Engulfing"],
+  "estrategias_pausadas": ["Hammer", "Doji", "RSI_Bollinger", "RSI_Divergence"],
+  "pares_activos": ["EUR_USD", "GBP_USD", "USD_CHF"],
+  "pares_pausados": ["USD_JPY", "USD_CAD", "AUD_USD", "NZD_USD"],
+  "sesiones_activas": ["london", "overlap"],
+  "sesiones_pausadas": ["new_york", "asia"],
+  "cooldown_minutes": 15,
+  "min_confidence": 0.6,
   "rr_ratio": 2.0,
+  "sl_atr_mult": 1.5,
+  "riesgo_pct": 0.005,
+  "min_sl_pips": 10,
+  "max_sl_pips": 30,
+  "max_posiciones": 5,
+  "max_pos_par": 2,
+  "max_drawdown_dia": 0.05,
+  "circuit_breaker_pct": 0.1,
+  "min_win_rate": 0.35,
   "rsi_low": 30,
   "rsi_high": 70,
-  "min_win_rate": 0.34,
-  "min_confidence": 0.40,
-  "sesiones_activas": [
-    "london",
-    "new_york"
-  ],
-  "sesiones_pausadas": [
-    "overlap"
-  ],
-  "cooldown_minutes": 45,
-  "max_posiciones": 10,
-  "max_pos_par": 3,
-  "riesgo_pct": 0.020,
-  "max_drawdown_dia": 0.04,
-  "circuit_breaker_pct": 0.15
+  "rsi_hammer_max": 45,
+  "prev_bearish_min": 2,
+  "adx_max_rsi_bollinger": 25,
+  "adx_max_hammer": 30,
+  "hammer_min_body_pct": 0.05,
+  "hammer_m15_confirm": false,
+  "m1_entry_refinement": false,
+  "m1_entry_timeout_min": 3,
+  "max_trade_hours": 12,
+  "min_pips_to_hold": 3,
+  "max_consecutive_losses": 3,
+  "consecutive_loss_pause_hours": 24,
+  "calibrado_por": "sweep_rendimiento_v14",
+  "calibrado_en": "2026-05-19",
+  "adx_min_operar": 23
 }

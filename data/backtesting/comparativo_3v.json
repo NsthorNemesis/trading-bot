@@ -1,0 +1,59 @@
+{
+  "timestamp": "2026-05-15T01:24:16.550120",
+  "descripcion": "Comparativo 3 variantes \u2014 mismo motor, mismos datos, misma semilla",
+  "config_base": {
+    "capital_ini": 200.0,
+    "n_semanas": 52,
+    "sim_start": "2025-05-09T00:00:00+00:00",
+    "pares": [
+      "EUR_USD",
+      "GBP_USD",
+      "USD_JPY",
+      "USD_CHF",
+      "AUD_USD",
+      "USD_CAD"
+    ],
+    "sl_atr_mult": 2.0,
+    "rr_ratio": 2.0,
+    "sesiones": [
+      "new_york",
+      "london"
+    ],
+    "riesgo_pct": 0.015
+  },
+  "resultados": [
+    {
+      "label": "A  RSI_Bollinger solo",
+      "capital": 200.0,
+      "roi": 0.0,
+      "wr": 0.0,
+      "dd": 0.0,
+      "trades": 0,
+      "calmar": 0,
+      "apr_rate": null,
+      "by_estrat": {}
+    },
+    {
+      "label": "B  EMA_Crossover + Hammer + Doji",
+      "capital": 200.0,
+      "roi": 0.0,
+      "wr": 0.0,
+      "dd": 0.0,
+      "trades": 0,
+      "calmar": 0,
+      "apr_rate": null,
+      "by_estrat": {}
+    },
+    {
+      "label": "C  RSI_Bollinger + RSI_Divergence",
+      "capital": 200.0,
+      "roi": 0.0,
+      "wr": 0.0,
+      "dd": 0.0,
+      "trades": 0,
+      "calmar": 0,
+      "apr_rate": null,
+      "by_estrat": {}
+    }
+  ]
+}

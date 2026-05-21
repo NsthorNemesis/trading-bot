@@ -79,6 +79,18 @@ class RiskExecutionAgent:
         self._cb_hasta:  Optional[datetime] = None  # Pausa hasta esta fecha
         self._cb_dd_max  = 0.0            # Máximo drawdown rolling observado
 
+        # ── Consecutive loss cooldown ─────────────────────────────────────────
+        # Rastrea SLs consecutivos por par. Si supera max_consecutive_losses,
+        # el par queda pausado consecutive_loss_pause_hours horas.
+        self._consec_losses: dict[str, int]              = {}  # par → SLs seguidos
+        self._consec_pausa:  dict[str, Optional[datetime]] = {}  # par → pausado hasta
+
+        # ── StaleExit deduplicación ───────────────────────────────────────────
+        # Set de oanda_ids para los que ya se envió una orden de cierre stale.
+        # Evita que _gestionar_stale_exit envíe múltiples TradeClose al mismo
+        # trade en ciclos sucesivos mientras OANDA procesa el cierre.
+        self._stale_closing: set = set()
+
         # Clientes
         self._oanda = oandapyV20.API(
             access_token = OANDA_TOKEN,
@@ -248,11 +260,24 @@ class RiskExecutionAgent:
             return None
         if not self._validar_max_posiciones():
             return None
+        if not self._validar_max_pos_par(par):
+            return None
+        if not self._validar_consecutive_loss_cooldown(par):
+            return None
         if not self._validar_correlacion(par, senal["dir"]):
             return None
 
+        # ── REFINAMIENTO DE ENTRADA M1 ────────────────────────────────────────
+        # Si m1_entry_refinement está activo, espera una vela M1 favorable
+        # antes de ejecutar (mejora precio de entrada tras señal M15).
+        # En backtest, asyncio.sleep es ×500 → overhead real ~0.4 s por trade.
+        entry_m1 = None
+        if self._params.get("m1_entry_refinement", False):
+            entry_m1 = await self._esperar_entrada_m1(par, senal["dir"])
+
         # ── CALCULAR SL/TP ────────────────────────────────────────────────────
-        entry = senal["entry"]
+        # Usar precio M1 refinado si está disponible; si no, precio M15 original
+        entry = entry_m1 if entry_m1 is not None else senal["entry"]
         df    = self._signal._market.get_df(par, n=20)
         sl, tp = await self._calcular_sl_tp(par, senal["dir"], entry, senal["atr"], df)
 
@@ -301,8 +326,14 @@ class RiskExecutionAgent:
         sl_pips   = sl_dist / pip
         sl_pips   = max(sl_pips, self._params.get("min_sl_pips", 8))
         risk_usd  = self._capital * self._params.get("riesgo_pct", 0.01)
-        units     = int(risk_usd / (sl_pips * pip))
-        units     = max(100, min(units, 2000))
+        # units = riesgo_usd / sl_dist (fórmula directa, independiente del pip)
+        # Para EUR/GBP: risk=$3, sl_dist=0.001 → units=3000 (correcto ~3 micro-lots)
+        # Para USD/JPY: NO usar — par removido de pares_activos por bug P&L JPY
+        units     = int(risk_usd / sl_dist) if sl_dist > 0 else 100
+        # Límites: mínimo 1 unidad, máximo 100,000 (1 lote estándar)
+        # Cap proporcional al capital para evitar sobrexposición
+        max_units = max(1000, int(self._capital * 500))  # ~$2 capital → 1000 units
+        units     = max(1, min(units, max_units))
 
         if senal["dir"] == "short":
             units = -units
@@ -315,6 +346,69 @@ class RiskExecutionAgent:
         )
 
         return resultado
+
+    # ── REFINAMIENTO DE ENTRADA M1 ────────────────────────────────────────────
+
+    async def _esperar_entrada_m1(self, par: str, dir_senal: str) -> Optional[float]:
+        """
+        Espera una vela M1 favorable tras la señal M15.
+
+        Lógica:
+          - Long: busca vela M1 con Close > Open (alcista) — confirma que el
+            rebote ya está en marcha en el timeframe de ejecución.
+          - Short: busca vela M1 con Close < Open (bajista).
+          - Comprueba la vela actual primero (entrada inmediata si ya es favorable).
+          - Si no, re-chequea cada 15 s hasta m1_entry_timeout_min minutos.
+          - Si se agota el timeout, devuelve el precio M1 actual para no perder el trade.
+          - Si no hay datos M1 disponibles, devuelve None → se usa precio M15 original.
+
+        En backtest asyncio.sleep está parcheado a ×500, por lo que 3 min reales
+        equivalen a ~0.36 s de tiempo de CPU — sin impacto perceptible en velocidad.
+        """
+        timeout_min = float(self._params.get("m1_entry_timeout_min", 3))
+        poll_secs   = 15.0
+        max_polls   = max(1, int(timeout_min * 60 / poll_secs))
+
+        for intento in range(max_polls + 1):
+            # n=20 garantiza suficientes velas para ATR_14 y demás indicadores
+            df_m1 = self._signal._market.get_df(par, n=20)
+            if df_m1 is not None and len(df_m1) >= 2:
+                last  = df_m1.iloc[-1]
+                close = float(last["Close"])
+                open_ = float(last["Open"])
+
+                es_alcista = close > open_
+                es_bajista = close < open_
+
+                if dir_senal == "long" and es_alcista:
+                    logger.info(
+                        f"[M1-Entry] {par} LONG: vela M1 alcista (intento {intento}) "
+                        f"→ entrada refinada {close:.5f}"
+                    )
+                    return close
+
+                if dir_senal == "short" and es_bajista:
+                    logger.info(
+                        f"[M1-Entry] {par} SHORT: vela M1 bajista (intento {intento}) "
+                        f"→ entrada refinada {close:.5f}"
+                    )
+                    return close
+
+            if intento < max_polls:
+                await asyncio.sleep(poll_secs)
+
+        # Timeout: usar precio M1 actual (no perder el trade)
+        df_m1 = self._signal._market.get_df(par, n=20)
+        if df_m1 is not None and len(df_m1) >= 1:
+            precio_timeout = float(df_m1.iloc[-1]["Close"])
+            logger.info(
+                f"[M1-Entry] {par} timeout {timeout_min:.0f} min — "
+                f"entrada a mercado {precio_timeout:.5f}"
+            )
+            return precio_timeout
+
+        logger.warning(f"[M1-Entry] {par}: sin datos M1 → usando precio M15 original")
+        return None
 
     # ── DEEPSEEK V4-PRO: CALCULAR SL/TP ──────────────────────────────────────
 
@@ -341,39 +435,65 @@ class RiskExecutionAgent:
         if not self._ds:
             return sl_base, tp_base
 
-        # DeepSeek V4-Pro con thinking — hasta 3 intentos
-        cierres = (
-            ",".join(f"{x:.5f}" for x in df["Close"].tail(15).tolist())
-            if df is not None else ""
+        # DeepSeek — hasta 3 intentos
+        # Para deepseek-reasoner (R1): assistant prefill fuerza output JSON puro.
+        # Para deepseek-chat: response_format json_object es suficiente.
+        _is_reasoner  = "reasoner" in MODEL_DEEP.lower()
+        _use_json_mode = not _is_reasoner
+
+        # Prompt ultra-compacto — sin descripción matemática que invite a explicar
+        _min_sl = self._params['min_sl_pips']
+        _pip_str = "0.001" if "JPY" in par else "0.00001"
+        _prompt_user = (
+            f"PAR={par} DIR={direccion} ENTRY={entry:.5f} "
+            f"ATR={atr:.5f} SL_MULT={sl_mult} RR={rr} "
+            f"MIN_SL_PIPS={_min_sl} PIP={_pip_str}\n"
+            f'Completa: {{"sl":?,"tp":?,"sl_pips":?,"rr":?}}'
         )
-        prompt = f"""
-Par:{par} Dir:{direccion} Entry:{entry:.5f}
-ATR14:{atr:.5f} RR_min:{rr} SL_mult:{sl_mult}
-Cierres15:{cierres}
 
-Calcula SL y TP:
-- SL = max({sl_mult}×ATR, {self._params['min_sl_pips']} pips) tras nivel clave
-- TP = SL × {rr} mínimo
-- JPY: 3 decimales | resto: 5 decimales
+        # Mensajes: para R1 añadimos turno de asistente con '{' para forzar JSON
+        if _is_reasoner:
+            _messages = [
+                {"role": "user",      "content": _prompt_user},
+                {"role": "assistant", "content": "{"},   # prefill — el modelo completa desde aquí
+            ]
+        else:
+            _messages = [{"role": "user", "content": _prompt_user}]
 
-JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
-"""
+        import re as _re
         loop = asyncio.get_running_loop()
         for intento in range(3):
             try:
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: self._ds.chat.completions.create(
-                        model      = MODEL_DEEP,
-                        messages   = [{"role": "user", "content": prompt}],
-                        response_format = {"type": "json_object"},
-                        max_tokens = 150,
-                    )
+                _kwargs = dict(
+                    model      = MODEL_DEEP,
+                    messages   = _messages,
+                    max_tokens = 80,   # JSON corto — no da espacio para prosa
+                )
+                if _use_json_mode:
+                    _kwargs["response_format"] = {"type": "json_object"}
+
+                response = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None,
+                        lambda: self._ds.chat.completions.create(**_kwargs)
+                    ),
+                    timeout=15.0  # 15 s máximo por intento — evita freeze infinito
                 )
 
-                content = response.choices[0].message.content
-                if not content or not content.strip():
+                content = response.choices[0].message.content or ""
+                # Para R1 con prefill: el contenido devuelto NO incluye el '{' inicial → recomponerlo
+                if _is_reasoner and content and not content.strip().startswith("{"):
+                    content = "{" + content.strip()
+
+                if not content.strip():
                     raise ValueError("DeepSeek respuesta vacía")
+
+                # Extraer JSON del texto (maneja ```json ... ``` y texto libre)
+                _json_match = _re.search(r'\{[^{}]*"sl"[^{}]*\}', content, _re.DOTALL)
+                if _json_match:
+                    content = _json_match.group(0)
+                elif not content.strip().startswith('{'):
+                    raise ValueError(f"DeepSeek sin JSON válido: {content[:80]}")
 
                 r  = json.loads(content)
                 sl = float(r["sl"])
@@ -521,10 +641,17 @@ JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
         logger.info("Monitor de posiciones OANDA iniciado (30s)")
         while self._running:
             await asyncio.sleep(30)
+            if not self._running:
+                break
             try:
                 await asyncio.get_running_loop().run_in_executor(
                     None, self._verificar_cierres
                 )
+            except RuntimeError as e:
+                # Silently ignore shutdown errors (harness/asyncio teardown)
+                if "cannot schedule" in str(e) or "shutdown" in str(e).lower():
+                    break
+                logger.error(f"Monitor posiciones error: {e}")
             except Exception as e:
                 logger.error(f"Monitor posiciones error: {e}")
 
@@ -652,6 +779,89 @@ JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
                         )
                         info["sl"] = new_sl
 
+    def _gestionar_stale_exit(self, abiertas_oanda: dict):
+        """
+        Cierra trades que llevan demasiado tiempo abiertos sin alcanzar
+        un umbral mínimo de ganancia — evita que trades zombi eventualmente
+        toquen el SL completo.
+
+        Condición de cierre:
+          tiempo_abierto > max_trade_hours
+          Y precio_actual < entry + min_pips_to_hold * pip  (para long)
+          Y breakeven NO activado todavía (si BE activo, el trailing gestiona)
+
+        Parámetros (strategy_params.json):
+          max_trade_hours    → horas máximas antes de evaluar cierre (default 8)
+          min_pips_to_hold   → pips mínimos a favor para seguir abierto (default 3)
+        """
+        max_horas  = float(self._params.get("max_trade_hours", 8))
+        min_pips   = float(self._params.get("min_pips_to_hold", 3))
+
+        for trade_id, info in list(self._pos_abiertas.items()):
+            oanda_id = info.get("oanda_id")
+            if not oanda_id or oanda_id not in abiertas_oanda:
+                continue
+
+            # No interferir si BE ya fue activado (trailing se hace cargo)
+            if info.get("be_activado", False):
+                continue
+
+            # Calcular tiempo abierto
+            opened_at_raw = info.get("opened_at", "")
+            try:
+                if isinstance(opened_at_raw, str) and opened_at_raw:
+                    opened_at = datetime.fromisoformat(opened_at_raw.replace("Z", "+00:00"))
+                else:
+                    continue
+            except (ValueError, TypeError):
+                continue
+
+            ahora         = datetime.now(timezone.utc)
+            horas_abierto = (ahora - opened_at).total_seconds() / 3600
+
+            if horas_abierto < max_horas:
+                continue  # Todavía dentro del plazo normal
+
+            # Revisar si el precio está lo suficientemente a favor
+            par    = info["par"]
+            dir_   = info["dir"]
+            entry  = info["entry"]
+            pip    = 0.01 if "JPY" in par else 0.0001
+            precio = self._obtener_precio_actual(par)
+            if precio == 0:
+                continue
+
+            pips_favor = (
+                (precio - entry) / pip if dir_ == "long"
+                else (entry - precio) / pip
+            )
+
+            if pips_favor >= min_pips:
+                continue  # Hay ganancia suficiente, dejar correr
+
+            # ── CIERRE POR TRADE ESTANCADO ────────────────────────────────────
+            # Deduplicación: si ya enviamos una orden de cierre para este trade,
+            # no reenviar hasta que OANDA confirme el cierre (lo elimina de
+            # _pos_abiertas en _verificar_cierres, que también limpia _stale_closing).
+            if oanda_id in self._stale_closing:
+                logger.debug(
+                    f"[StaleExit] {par} ID={oanda_id} — cierre ya en curso, esperando confirmación OANDA"
+                )
+                continue
+
+            logger.warning(
+                f"[StaleExit] {par} {dir_.upper()} | ID={trade_id} | "
+                f"{horas_abierto:.1f}h abierto | {pips_favor:+.1f} pips | "
+                f"< {min_pips} pips mínimo → cerrando para proteger capital"
+            )
+            try:
+                r = oanda_trades.TradeClose(OANDA_ACCOUNT, oanda_id)
+                self._oanda.request(r)
+                self._stale_closing.add(oanda_id)  # marcar: cierre en tránsito
+                logger.info(f"[StaleExit] Orden de cierre enviada | {par} ID={oanda_id}")
+            except Exception as e:
+                logger.error(f"[StaleExit] Error cerrando {par} ID={oanda_id}: {e}")
+
     def _notificar_be(self, trade_id: str, par: str, dir_: str,
                       entry: float, new_sl: float, precio: float, sl_dist: float):
         """Despacha notificacion Telegram de break-even desde thread."""
@@ -673,8 +883,9 @@ JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
                 for t in r.response.get("trades", [])
             }
 
-            # Break-even y trailing antes de verificar cierres
+            # Break-even, trailing y stale exit antes de verificar cierres
             self._gestionar_be_trailing(abiertas_oanda)
+            self._gestionar_stale_exit(abiertas_oanda)
 
             cerradas = [
                 (tid, info)
@@ -700,6 +911,13 @@ JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
 
                 # Registrar en historial rolling para circuit breaker
                 self._registrar_capital()
+
+                # Actualizar contador de pérdidas consecutivas
+                self._registrar_resultado_trade(par, pnl)
+
+                # Limpiar flag de stale_closing si aplica
+                if oanda_id in self._stale_closing:
+                    self._stale_closing.discard(oanda_id)
 
                 del self._pos_abiertas[trade_id]
 
@@ -775,9 +993,17 @@ JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
             if self._cb_hasta and now >= self._cb_hasta:
                 self._cb_activo = False
                 self._cb_hasta  = None
+                # CRÍTICO: resetear _capital_history al capital actual.
+                # Sin esto, el peak_rolling sigue siendo el capital pre-caída
+                # ($200) y el circuit breaker se reactiva inmediatamente cada vez
+                # que la pausa termina, creando un bucle infinito que bloquea
+                # el trading para siempre una vez que se supera el umbral de DD.
+                self._capital_history.clear()
+                self._capital_history.append((now, self._capital))
                 logger.info(
                     "Circuit breaker: pausa finalizada. "
-                    f"Capital actual: ${self._capital:.2f}. Bot reactivado."
+                    f"Capital actual: ${self._capital:.2f}. Bot reactivado. "
+                    f"Historial de capital reseteado al nivel actual."
                 )
             else:
                 mins_rest = int(
@@ -788,6 +1014,14 @@ JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
                     f"Capital=${self._capital:.2f}"
                 )
                 return False
+
+        # ── Purgar entradas antiguas antes de calcular pico ──────────────────
+        # Importante: purgar aquí (no solo en _actualizar_capital_history)
+        # porque durante una pausa larga sin trades, la purga normal no se
+        # ejecuta y el historial retiene entradas de 4+ semanas atrás.
+        cutoff = now - timedelta(days=28)
+        while self._capital_history and self._capital_history[0][0] < cutoff:
+            self._capital_history.popleft()
 
         # ── Calcular pico rolling de las últimas 4 semanas ───────────────────
         if len(self._capital_history) > 1:
@@ -851,6 +1085,69 @@ JSON: {{"sl":float,"tp":float,"sl_pips":float,"rr":float}}
             logger.debug(f"Max posiciones abiertas ({max_p})")
             return False
         return True
+
+    def _validar_max_pos_par(self, par: str) -> bool:
+        """Evita abrir más de max_pos_par posiciones en el mismo par simultáneamente."""
+        max_pp = self._params.get("max_pos_par", 2)
+        abiertas_en_par = sum(
+            1 for info in self._pos_abiertas.values()
+            if info.get("par") == par
+        )
+        if abiertas_en_par >= max_pp:
+            logger.debug(f"Max pos/par ({max_pp}) alcanzado para {par} — {abiertas_en_par} abiertas")
+            return False
+        return True
+
+    def _validar_consecutive_loss_cooldown(self, par: str) -> bool:
+        """
+        Bloquea el par si ha sufrido N SLs consecutivos recientemente.
+        El cooldown se levanta automáticamente cuando expira el tiempo.
+        """
+        max_consec  = int(self._params.get("max_consecutive_losses", 3))
+        pausa_horas = float(self._params.get("consecutive_loss_pause_hours", 24))
+
+        pausa_hasta = self._consec_pausa.get(par)
+        if pausa_hasta is not None:
+            ahora = datetime.now(timezone.utc)
+            if ahora < pausa_hasta:
+                restante = (pausa_hasta - ahora).total_seconds() / 3600
+                logger.info(
+                    f"[ConsecLoss] {par} en cooldown — {restante:.1f}h restantes "
+                    f"({self._consec_losses.get(par, 0)} SLs consecutivos)"
+                )
+                return False
+            else:
+                # Cooldown expirado → resetear
+                self._consec_pausa[par]  = None
+                self._consec_losses[par] = 0
+                logger.info(f"[ConsecLoss] {par}: cooldown expirado → señales reanudadas")
+        return True
+
+    def _registrar_resultado_trade(self, par: str, pnl: float):
+        """
+        Actualiza el contador de pérdidas consecutivas del par.
+        Llamar después de cada cierre de trade.
+        """
+        max_consec  = int(self._params.get("max_consecutive_losses", 3))
+        pausa_horas = float(self._params.get("consecutive_loss_pause_hours", 24))
+
+        if pnl < 0:
+            self._consec_losses[par] = self._consec_losses.get(par, 0) + 1
+            consec = self._consec_losses[par]
+            logger.info(f"[ConsecLoss] {par}: {consec} SL(s) consecutivo(s)")
+            if consec >= max_consec:
+                hasta = datetime.now(timezone.utc) + timedelta(hours=pausa_horas)
+                self._consec_pausa[par] = hasta
+                logger.warning(
+                    f"[ConsecLoss] {par}: {consec} SLs seguidos — "
+                    f"pausado {pausa_horas:.0f}h hasta {hasta.strftime('%Y-%m-%d %H:%M')} UTC"
+                )
+        else:
+            # Ganancia → resetear contador
+            if self._consec_losses.get(par, 0) > 0:
+                logger.info(f"[ConsecLoss] {par}: TP alcanzado → contador reiniciado")
+            self._consec_losses[par] = 0
+            self._consec_pausa[par]  = None
 
     def _validar_correlacion(self, par: str, direccion: str) -> bool:
         """Evita posiciones correlacionadas en la misma dirección."""
