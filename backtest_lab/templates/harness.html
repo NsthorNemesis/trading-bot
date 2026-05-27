@@ -63,30 +63,86 @@
 <div class="card mb-3">
   <div class="card-header"><i class="bi bi-sliders me-2"></i>Configuración</div>
   <div class="card-body">
-    <div class="row g-3 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label">Semanas de historial</label>
+
+    <!-- Fila 1: básicos -->
+    <div class="row g-3 align-items-end mb-3">
+      <div class="col-md-2">
+        <label class="form-label">Semanas</label>
         <input type="number" class="form-control" id="inp-semanas" value="4" min="1" max="52" step="1">
-        <div class="form-text text-muted">1–52 semanas (más = más lento)</div>
+        <div class="form-text text-muted">1–52 (más = más lento)</div>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Capital inicial ($)</label>
         <input type="number" class="form-control" id="inp-capital" value="200" min="100" max="100000" step="50">
       </div>
-      <div class="col-md-3">
-        <label class="form-label">Par específico (opcional)</label>
+      <div class="col-md-2">
+        <label class="form-label">Par específico</label>
         <select class="form-select" id="inp-par">
-          <option value="">Todos los pares activos</option>
-          <option value="AUD_USD">AUD/USD</option>
-          <option value="NZD_USD">NZD/USD</option>
+          <option value="">Todos los activos</option>
           <option value="EUR_USD">EUR/USD</option>
           <option value="GBP_USD">GBP/USD</option>
-          <option value="USD_JPY">USD/JPY</option>
           <option value="USD_CHF">USD/CHF</option>
+          <option value="AUD_USD">AUD/USD</option>
+          <option value="NZD_USD">NZD/USD</option>
+          <option value="USD_JPY">USD/JPY</option>
           <option value="USD_CAD">USD/CAD</option>
         </select>
       </div>
-      <div class="col-md-3 d-flex gap-2">
+      <div class="col-md-2">
+        <label class="form-label">Riesgo por trade</label>
+        <select class="form-select" id="inp-riesgo">
+          <option value="">Default (strategy_params)</option>
+          <option value="0.003">0.3%</option>
+          <option value="0.005" selected>0.5%</option>
+          <option value="0.01">1.0%</option>
+          <option value="0.02">2.0%</option>
+          <option value="0.03">3.0%</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Cooldown (min)</label>
+        <select class="form-select" id="inp-cooldown">
+          <option value="">Default</option>
+          <option value="15">15 min</option>
+          <option value="30">30 min</option>
+          <option value="60">60 min</option>
+          <option value="120">2 horas</option>
+          <option value="240">4 horas</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">ADX mínimo</label>
+        <input type="number" class="form-control" id="inp-adx" placeholder="Default (23)" min="0" max="60" step="1">
+      </div>
+    </div>
+
+    <!-- Fila 2: estrategias + sesiones + SL + botones -->
+    <div class="row g-3 align-items-start">
+      <div class="col-md-3">
+        <label class="form-label">Estrategias</label>
+        <div class="d-flex flex-wrap gap-2">
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="e-ema" value="EMA_Crossover" checked><label class="form-check-label" for="e-ema">EMA Crossover</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="e-eng" value="Engulfing" checked><label class="form-check-label" for="e-eng">Engulfing</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="e-rsi" value="RSI_Bollinger"><label class="form-check-label" for="e-rsi">RSI Bollinger</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="e-ham" value="Hammer"><label class="form-check-label" for="e-ham">Hammer</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="e-doj" value="Doji"><label class="form-check-label" for="e-doj">Doji</label></div>
+        </div>
+        <div class="form-text text-muted">Sin selección = usa strategy_params</div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Sesiones</label>
+        <div class="d-flex flex-wrap gap-2">
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="s-lon" value="london" checked><label class="form-check-label" for="s-lon">London</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="s-ov" value="overlap" checked><label class="form-check-label" for="s-ov">Overlap</label></div>
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="s-ny" value="new_york"><label class="form-check-label" for="s-ny">New York</label></div>
+        </div>
+        <div class="form-text text-muted">Sin selección = usa strategy_params</div>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">SL multiplicador ATR</label>
+        <input type="number" class="form-control" id="inp-sl" placeholder="Default (1.5)" min="0.5" max="5.0" step="0.1">
+      </div>
+      <div class="col-md-3 d-flex gap-2 align-items-end">
         <button class="btn btn-primary flex-fill" id="btn-run" onclick="runHarness()">
           <i class="bi bi-play-fill me-1"></i>Ejecutar Simulación
         </button>
@@ -95,6 +151,7 @@
         </button>
       </div>
     </div>
+
     <div class="running-indicator mt-3" id="running-ind">
       <div class="spinner-border spinner-border-sm text-primary"></div>
       <span id="running-txt">Simulando...</span>
@@ -172,13 +229,35 @@ function runHarness() {
   document.getElementById("btn-stop").style.display = "inline-flex";
   document.getElementById("running-ind").classList.add("show");
 
-  const semanas = document.getElementById("inp-semanas").value;
-  const capital = document.getElementById("inp-capital").value;
-  const par     = document.getElementById("inp-par").value;
+  const semanas    = document.getElementById("inp-semanas").value;
+  const capital    = document.getElementById("inp-capital").value;
+  const par        = document.getElementById("inp-par").value;
+  const riesgo     = document.getElementById("inp-riesgo").value;
+  const cooldown   = document.getElementById("inp-cooldown").value;
+  const adx        = document.getElementById("inp-adx").value;
+  const sl         = document.getElementById("inp-sl").value;
+
+  // Estrategias seleccionadas
+  const estrategias = ["e-ema","e-eng","e-rsi","e-ham","e-doj"]
+    .filter(id => document.getElementById(id).checked)
+    .map(id => document.getElementById(id).value).join(",");
+
+  // Sesiones seleccionadas
+  const sesiones = ["s-lon","s-ov","s-ny"]
+    .filter(id => document.getElementById(id).checked)
+    .map(id => document.getElementById(id).value).join(",");
+
   document.getElementById("running-txt").textContent =
     `Simulando ${semanas} sem. · $${capital}${par ? ' · '+par.replace('_','/') : ''}...`;
 
-  const url = `/harness/run?semanas=${semanas}&capital=${capital}&par=${encodeURIComponent(par)}`;
+  const params = new URLSearchParams({ semanas, capital, par });
+  if (estrategias) params.set("estrategias", estrategias);
+  if (sesiones)    params.set("sesiones",    sesiones);
+  if (riesgo)      params.set("riesgo_pct",  riesgo);
+  if (cooldown)    params.set("cooldown",    cooldown);
+  if (adx)         params.set("adx_min",     adx);
+  if (sl)          params.set("sl_atr_mult", sl);
+  const url = `/harness/run?${params.toString()}`;
   evtSource = new EventSource(url);
 
   evtSource.onmessage = (e) => {

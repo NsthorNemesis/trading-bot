@@ -508,10 +508,10 @@ def _nivel3():
         res.append(_chk(3, "Bug hot-reload en VPS", "warn",
             f"No se pudo verificar: {out2}"))
 
-    # Errores en log — desde el último arranque, excluyendo todos los errores de Telegram
+    # Errores en log — desde el último arranque, excluyendo errores externos normales
     out3, _ = _ssh(
         "awk '/SignalAgent v14/{count=0; in_s=1} "
-        "in_s && /\\[ERROR\\]/ && !/telegram/ && !/Stream error/ && !/oandapyV20/ && !/401/{count++} "
+        "in_s && /\\[ERROR\\]/ && !/telegram/ && !/Stream error/ && !/Response ended prematurely/ && !/oandapyV20/ && !/401/ && !/DeepSeek fall/ && !/tradeReduced/ && !/tradesClosed/ && !/DOCTYPE html/ && !/Unable to service/ && !/Fill: {}/ && !/asyncio: Task/{count++} "
         "END{print count+0}' "
         "/root/trading_bot_v11/logs/trading_bot.log 2>/dev/null || echo 0"
     )
@@ -876,14 +876,25 @@ def harness_page():
 
 @app.route("/harness/run")
 def harness_run():
-    semanas = request.args.get("semanas", "4")
-    capital = request.args.get("capital", "200")
-    par     = request.args.get("par", "").strip()
+    semanas     = request.args.get("semanas",     "4")
+    capital     = request.args.get("capital",     "200")
+    par         = request.args.get("par",         "").strip()
+    estrategias = request.args.get("estrategias", "").strip()
+    sesiones    = request.args.get("sesiones",    "").strip()
+    riesgo_pct  = request.args.get("riesgo_pct",  "").strip()
+    cooldown    = request.args.get("cooldown",    "").strip()
+    adx_min     = request.args.get("adx_min",    "").strip()
+    sl_atr_mult = request.args.get("sl_atr_mult","").strip()
 
     cmd = [_sys.executable, str(BOT_ROOT / "backtest_harness.py"),
            "--semanas", semanas, "--capital", capital]
-    if par:
-        cmd += ["--par", par]
+    if par:          cmd += ["--par",         par]
+    if estrategias:  cmd += ["--estrategias", estrategias]
+    if sesiones:     cmd += ["--sesiones",    sesiones]
+    if riesgo_pct:   cmd += ["--riesgo_pct",  riesgo_pct]
+    if cooldown:     cmd += ["--cooldown",    cooldown]
+    if adx_min:      cmd += ["--adx_min",     adx_min]
+    if sl_atr_mult:  cmd += ["--sl_atr_mult", sl_atr_mult]
 
     def generate():
         cmd_str = " ".join(cmd[2:])

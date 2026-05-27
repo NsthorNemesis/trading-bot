@@ -477,7 +477,7 @@ class RiskExecutionAgent:
                         None,
                         lambda: self._ds.chat.completions.create(**_kwargs)
                     ),
-                    timeout=15.0  # 15 s máximo por intento — evita freeze infinito
+                    timeout=30.0  # 30 s máximo por intento — evita freeze infinito
                 )
 
                 content = response.choices[0].message.content or ""
@@ -530,8 +530,9 @@ class RiskExecutionAgent:
 
             except Exception as e:
                 if intento < 2:
-                    logger.warning(f"DeepSeek intento {intento+1}/3 fallido para {par}: {e} — reintentando")
-                    await asyncio.sleep(1)
+                    delay = 3 * (intento + 1)  # 3s primer reintento, 6s segundo
+                    logger.warning(f"DeepSeek intento {intento+1}/3 fallido para {par}: {e} — reintentando en {delay}s")
+                    await asyncio.sleep(delay)
                 else:
                     logger.error(f"DeepSeek falló 3 intentos para {par}: {e} — usando fórmula")
 
@@ -1184,6 +1185,7 @@ class RiskExecutionAgent:
                 if t.get("oanda_id") == oanda_id and "pnl" not in t:
                     t["pnl"]       = round(pnl, 4)
                     t["closed_at"] = datetime.now(timezone.utc).isoformat()
+                    t["estado"]    = "cerrado"
                     break
             TRADES_LOG.write_text(json.dumps(trades, indent=2, default=str))
         except Exception as e:

@@ -156,7 +156,7 @@ class SignalAgent:
         if not self._market.datos_frescos(par):
             return None
 
-        df = self._market.get_df(par, n=60)
+        df = self._market.get_df(par, n=80)
         if df is None or len(df) < 30:
             return None
 
@@ -180,12 +180,22 @@ class SignalAgent:
         if not self._ds:
             return None
 
+        # ── Detectar estrategias activas ─────────────────────────────────────
+        patrones_detectados = self._detectar_patrones(df)
+
+        # Pre-gate: solo llama a DeepSeek si hay al menos una estrategia activa
+        if not patrones_detectados:
+            logger.debug(f"[Estrategias] {par}: sin setup activo — skip DeepSeek")
+            return None
+
+        logger.debug(f"[Estrategias] {par}: detectadas={patrones_detectados}")
+
         # ── Lanzar 2 tareas en paralelo ──────────────────────────────────────
         # BriefIng (API) + Riesgo (local) corren simultáneamente
         try:
             briefing_txt, riesgo_txt = await asyncio.wait_for(
                 asyncio.gather(
-                    self._agente_briefing(par, df),
+                    self._agente_briefing(par, df, patrones_detectados),
                     self._agente_riesgo(par),
                 ),
                 timeout=15.0,
@@ -198,7 +208,7 @@ class SignalAgent:
             return None
 
         # ── Agente decisor (deepseek-reasoner) ──────────────────────────────
-        senal = await self._agente_decision(par, df, briefing_txt, riesgo_txt)
+        senal = await self._agente_decision(par, df, briefing_txt, riesgo_txt, patrones_detectados)
         if not senal:
             return None
 
@@ -215,7 +225,7 @@ class SignalAgent:
 
     # ── Agente 1: Briefing unificado (técnico + régimen) ───────────────────────
 
-    async def _agente_briefing(self, par: str, df) -> str:
+    async def _agente_briefing(self, par: str, df, patrones_detectados: list = None) -> str:
         """
         Fusión de análisis técnico y de régimen en una sola llamada API.
         Produce un briefing estructurado de 6-8 oraciones que el decisor
@@ -223,9 +233,9 @@ class SignalAgent:
         """
         u = df.iloc[-1]
 
-        # Últimas 15 velas
+        # Últimas 20 velas
         velas_data = []
-        for _, row in df.tail(15).iterrows():
+        for _, row in df.tail(20).iterrows():
             ts = str(row.get("Timestamp", row.name))[:16]
             op = float(row.get("Open",  0))
             hi = float(row.get("High",  0))
@@ -256,8 +266,13 @@ class SignalAgent:
             except Exception:
                 pass
 
+        # Estrategias detectadas por pre-filtro técnico
+        estrategias_str = ", ".join(patrones_detectados) if patrones_detectados else "ninguna"
+
         prompt = (
             f"Par: {par} | Timeframe: M15\n\n"
+            f"── SETUP DETECTADO POR PRE-FILTRO ──\n"
+            f"  Estrategias activas en esta vela: {estrategias_str}\n\n"
             f"── VELAS (últimas 15) ──\n{velas_str}\n\n"
             f"── INDICADORES ACTUALES ──\n"
             f"  Precio={precio:.5f}  ATR={atr:.5f}  ADX={adx:.1f}\n"
@@ -268,7 +283,8 @@ class SignalAgent:
             f"  Últimos 10 cierres: {', '.join(cierres)}\n"
             f"  Últimos 5 ATR: {', '.join(atrs) if atrs else 'N/A'}\n"
             f"  Score régimen (0=rango, 1=tendencia): {regime_score:.2f}\n\n"
-            f"Produce el briefing técnico completo: setup, régimen y calidad del setup."
+            f"Valida si el setup detectado ({estrategias_str}) es sólido. "
+            f"Produce el briefing técnico completo: setup, régimen y calidad."
         )
 
         loop = asyncio.get_event_loop()
@@ -351,7 +367,8 @@ class SignalAgent:
 
     async def _agente_decision(
         self, par: str, df,
-        briefing_txt: str, riesgo_txt: str
+        briefing_txt: str, riesgo_txt: str,
+        patrones_detectados: list = None
     ) -> Optional[dict]:
         """
         Recibe el paquete consolidado (briefing + riesgo) y toma la decisión final.
@@ -441,18 +458,151 @@ class SignalAgent:
             f"[Decisor] {par} TRADE {direction.upper()} conf={conf:.0%} — "
             f"{resultado.get('razon','')}"
         )
+        # Etiquetar estrategia con patrones detectados localmente
+        patrones = patrones_detectados if patrones_detectados else []
+        if patrones:
+            estrategia_tag = "+".join(patrones)
+        else:
+            estrategia_tag = "MultiAgente_v14_reasoner"
+
         return {
             "par":         par,
             "dir":         direction,
             "conf":        round(conf, 3),
             "entry":       precio,
             "razon":       resultado.get("razon", ""),
-            "estrategia":  "MultiAgente_v14_reasoner",
+            "estrategia":  estrategia_tag,
+            "patrones":    patrones,
             "atr":         atr_val,
             "regime_score": 0.5,
         }
 
     # ── Helpers ─────────────────────────────────────────────────────────────
+
+    def _detectar_patrones(self, df) -> list:
+        """
+        Detecta qué estrategias activas tienen sus condiciones técnicas cumplidas.
+        Cada estrategia tiene reglas propias bien definidas.
+        Solo retorna estrategias que están en 'estrategias_activas'.
+        """
+        activas  = self._params.get("estrategias_activas", [])
+        patrones = []
+        try:
+            if len(df) < 10:
+                return patrones
+
+            u     = df.iloc[-1]
+            prev  = df.iloc[-2]
+            close = float(u.get("Close", 0))
+            open_ = float(u.get("Open",  0))
+            high  = float(u.get("High",  0))
+            low   = float(u.get("Low",   0))
+            rsi   = float(u.get("RSI_14", 50) or 50)
+            adx   = float(u.get("ADX_14",  0) or 0)
+            ema20 = float(u.get("EMA_20",  0) or 0)
+            ema50 = float(u.get("EMA_50",  0) or 0)
+            ema9  = float(u.get("EMA_9",   0) or 0)
+            bbl   = next((float(u[c] or 0) for c in df.columns if "BBL" in c), 0)
+            bbu   = next((float(u[c] or 0) for c in df.columns if "BBU" in c), 0)
+            cuerpo     = abs(close - open_)
+            rango      = high - low or 1e-9
+            sombra_inf = min(open_, close) - low
+            sombra_sup = high - max(open_, close)
+
+            # ── EMA_Crossover ─────────────────────────────────────────────────
+            # Regla: EMA9 cruza EMA50 en últimas 3 velas + ADX > 20
+            if "EMA_Crossover" in activas and "EMA_9" in df.columns and "EMA_50" in df.columns:
+                ema9_arr  = df["EMA_9"].values
+                ema50_arr = df["EMA_50"].values
+                cruce = any(
+                    (ema9_arr[i-1] <= ema50_arr[i-1] and ema9_arr[i] > ema50_arr[i]) or
+                    (ema9_arr[i-1] >= ema50_arr[i-1] and ema9_arr[i] < ema50_arr[i])
+                    for i in range(-3, 0) if i-1 >= -len(ema9_arr)
+                )
+                if cruce and adx >= 20:
+                    patrones.append("EMA_Crossover")
+
+            # ── Engulfing ─────────────────────────────────────────────────────
+            # Regla: vela actual engulle completamente la anterior + alineada con tendencia
+            if "Engulfing" in activas:
+                prev_close = float(prev.get("Close", 0))
+                prev_open  = float(prev.get("Open",  0))
+                prev_cuerpo = abs(prev_close - prev_open)
+                bull_engulf = (
+                    close > open_ and           # vela alcista
+                    prev_close < prev_open and  # anterior bajista
+                    close > prev_open and       # cierre > apertura anterior
+                    open_ < prev_close and      # apertura < cierre anterior
+                    cuerpo >= prev_cuerpo * 0.9
+                )
+                bear_engulf = (
+                    close < open_ and           # vela bajista
+                    prev_close > prev_open and  # anterior alcista
+                    close < prev_open and       # cierre < apertura anterior
+                    open_ > prev_close and      # apertura > cierre anterior
+                    cuerpo >= prev_cuerpo * 0.9
+                )
+                if bull_engulf or bear_engulf:
+                    patrones.append("Engulfing")
+
+            # ── Hammer ────────────────────────────────────────────────────────
+            # Regla: sombra inf >= 2x cuerpo + sombra sup <= 0.5x cuerpo
+            #        + en downtrend (EMA20 < EMA50) + RSI < 45
+            if "Hammer" in activas:
+                es_hammer = (
+                    cuerpo > 0 and
+                    sombra_inf >= 2 * cuerpo and
+                    sombra_sup <= cuerpo * 0.5 and
+                    ema20 < ema50 and            # downtrend
+                    rsi < 45                     # no sobrecomprado
+                )
+                if es_hammer:
+                    patrones.append("Hammer")
+
+            # ── Doji ──────────────────────────────────────────────────────────
+            # Regla: cuerpo < 10% del rango + RSI extremo (< 33 o > 67)
+            if "Doji" in activas:
+                es_doji = (
+                    cuerpo / rango < 0.10 and
+                    (rsi < 33 or rsi > 67)
+                )
+                if es_doji:
+                    patrones.append("Doji")
+
+            # ── RSI_Bollinger ─────────────────────────────────────────────────
+            # Regla: RSI < 30 + precio ≤ BB inferior  ó  RSI > 70 + precio ≥ BB superior
+            if "RSI_Bollinger" in activas and bbl > 0 and bbu > 0:
+                rsi_boll = (
+                    (rsi < 30 and close <= bbl * 1.001) or
+                    (rsi > 70 and close >= bbu * 0.999)
+                )
+                if rsi_boll:
+                    patrones.append("RSI_Bollinger")
+
+            # ── RSI_Divergence ────────────────────────────────────────────────
+            # Regla: precio hace nuevo mínimo/máximo pero RSI NO confirma (divergencia)
+            if "RSI_Divergence" in activas and "RSI_14" in df.columns and len(df) >= 15:
+                closes_rec = df["Close"].iloc[-8:].values
+                rsi_rec    = df["RSI_14"].iloc[-8:].values
+                # Divergencia alcista: precio mínimo más bajo, RSI mínimo más alto
+                div_bull = (
+                    closes_rec[-1] < closes_rec[:-1].min() * 1.001 and
+                    rsi_rec[-1]    > rsi_rec[:-1].min()    * 1.02  and
+                    rsi < 45
+                )
+                # Divergencia bajista: precio máximo más alto, RSI máximo más bajo
+                div_bear = (
+                    closes_rec[-1] > closes_rec[:-1].max() * 0.999 and
+                    rsi_rec[-1]    < rsi_rec[:-1].max()    * 0.98  and
+                    rsi > 55
+                )
+                if div_bull or div_bear:
+                    patrones.append("RSI_Divergence")
+
+        except Exception as e:
+            logger.debug(f"[Patrones] error detectando: {e}")
+
+        return patrones
 
     def _filtro_cooldown(self, par: str) -> bool:
         ultimo = self._cooldown.get(par)
@@ -478,4 +628,3 @@ class SignalAgent:
 
     def stop(self):
         self._running = False
-        logger.info("SignalAgent v14 detenido")

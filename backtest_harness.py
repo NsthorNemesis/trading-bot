@@ -578,10 +578,27 @@ class DataFeeder:
 class BacktestHarness:
 
     def __init__(self, capital: float = 200.0, n_semanas: int = 4,
-                 pares: list = None):
+                 pares: list = None, estrategias: list = None,
+                 sesiones: list = None, riesgo_pct: float = None,
+                 cooldown: int = None, adx_min: int = None,
+                 sl_atr_mult: float = None):
         self.capital   = capital
         self.n_semanas = n_semanas
         self.pares     = pares or PARES_DEFAULT
+        # Overrides opcionales — si se pasan, sobreescriben strategy_params.json
+        self._override_params = {}
+        if estrategias:
+            self._override_params["estrategias_activas"] = estrategias
+        if sesiones:
+            self._override_params["sesiones_activas"] = sesiones
+        if riesgo_pct is not None:
+            self._override_params["riesgo_pct"] = riesgo_pct
+        if cooldown is not None:
+            self._override_params["cooldown_minutes"] = cooldown
+        if adx_min is not None:
+            self._override_params["adx_min_operar"] = adx_min
+        if sl_atr_mult is not None:
+            self._override_params["sl_atr_mult"] = sl_atr_mult
 
         self.tick_queue  = queue.Queue(maxsize=2000)
         self.tracker     = None
@@ -1064,6 +1081,15 @@ class BacktestHarness:
                 logging.warning(f'  [Fix B] No se pudo leer strategy_params.json: {_eb}')
         else:
             logging.info('  [Fix B] strategy_params.json no encontrado')
+
+        # Fix C: aplicar overrides del usuario sobre los params ya cargados
+        if self._override_params:
+            logging.info(f'  [Fix C] Overrides de usuario: {self._override_params}')
+            for _agent_key in ('signal_agent', 'risk_execution_agent'):
+                _ag = agentes.get(_agent_key)
+                if _ag and isinstance(getattr(_ag, '_params', None), dict):
+                    _ag._params.update(self._override_params)
+                    logging.info(f'  [Fix C] {_agent_key}._params actualizado con overrides')
 
         if not agentes:
             logging.error("No se pudo instanciar ningún agente.")
@@ -1661,8 +1687,31 @@ class BacktestHarness:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Backtest Harness — Trading Bot v11")
-    parser.add_argument("--semanas", type=int, default=8, help="Número de semanas a simular")
+    parser.add_argument("--semanas",      type=int,   default=8,    help="Semanas a simular")
+    parser.add_argument("--capital",      type=float, default=200,  help="Capital inicial ($)")
+    parser.add_argument("--par",          type=str,   default=None, help="Par único (ej: EUR_USD)")
+    parser.add_argument("--estrategias",  type=str,   default=None, help="Estrategias separadas por coma")
+    parser.add_argument("--sesiones",     type=str,   default=None, help="Sesiones separadas por coma")
+    parser.add_argument("--riesgo_pct",   type=float, default=None, help="Riesgo por trade (0.005 = 0.5%)")
+    parser.add_argument("--cooldown",     type=int,   default=None, help="Cooldown entre trades (minutos)")
+    parser.add_argument("--adx_min",      type=int,   default=None, help="ADX mínimo para operar")
+    parser.add_argument("--sl_atr_mult",  type=float, default=None, help="Multiplicador ATR para SL")
     args = parser.parse_args()
-    harness = BacktestHarness(n_semanas=args.semanas)
+
+    pares_arg      = [args.par] if args.par else None
+    estrats_arg    = [e.strip() for e in args.estrategias.split(",")] if args.estrategias else None
+    sesiones_arg   = [s.strip() for s in args.sesiones.split(",")]    if args.sesiones   else None
+
+    harness = BacktestHarness(
+        capital      = args.capital,
+        n_semanas    = args.semanas,
+        pares        = pares_arg,
+        estrategias  = estrats_arg,
+        sesiones     = sesiones_arg,
+        riesgo_pct   = args.riesgo_pct,
+        cooldown     = args.cooldown,
+        adx_min      = args.adx_min,
+        sl_atr_mult  = args.sl_atr_mult,
+    )
     harness.correr()
     harness.ejecutar()
