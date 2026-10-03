@@ -38,11 +38,12 @@ logger = logging.getLogger("market_agent")
 
 # ── Tamaños de buffer por timeframe ───────────────────────────────────────────
 BUFFER_SIZE   = 500   # M1  → ~8 horas de velas de 1 minuto
-BUFFER_M15    = 700   # M15 → ~7 días de velas de 15 minutos
+BUFFER_M15    = 900   # M15 → ~9 días (~56 velas H4 para EMA50 del filtro tendencia)
 BUFFER_H4     = 200   # H4  → ~33 días de velas de 4 horas
 VELAS_MIN     = 60    # mínimo M1 para operar
 VELAS_MIN_M15 = 30    # mínimo M15 para señales
-MAX_EDAD      = 180   # segundos máximos de antigüedad del último tick
+MAX_EDAD      = 180   # segundos máximos de antigüedad del último tick (M1)
+MAX_EDAD_M15  = 1200  # 20 min: las velas M15 se timbran a la APERTURA (edad mínima 900 s)
 M15_REFRESH   = 900   # refrescar M15/H4 cada 15 minutos
 MAX_CACHE_AGE = 3600  # segundos: si el archivo M15 tiene más de 1h, re-descarga
 
@@ -53,30 +54,35 @@ class MarketAgent:
         # Parámetros operacionales (dinámicos desde JSON)
         self._params = params or PARAMS
 
-        # Pares activos leídos del JSON — agregar un par = editar JSON + restart
+        # Pares activos + observacion leídos del JSON — agregar un par = editar JSON + restart
         self._pares = list(self._params.get("pares_activos", PARES))
+        pares_obs   = list(self._params.get("pares_observacion", []))
+        self._todos_pares = list(dict.fromkeys(self._pares + pares_obs))  # sin duplicados
 
         # Timeframe de señales configurable
         self._signal_tf = self._params.get("signal_timeframe", "M15")
 
-        # Buffers por timeframe, inicializados para cada par activo
-        self._buffer     = {p: deque(maxlen=BUFFER_SIZE) for p in self._pares}
-        self._buffer_m15 = {p: deque(maxlen=BUFFER_M15)  for p in self._pares}
-        self._buffer_h4  = {p: deque(maxlen=BUFFER_H4)   for p in self._pares}
+        # Buffers por timeframe, inicializados para pares activos + observacion
+        self._buffer     = {p: deque(maxlen=BUFFER_SIZE) for p in self._todos_pares}
+        self._buffer_m15 = {p: deque(maxlen=BUFFER_M15)  for p in self._todos_pares}
+        self._buffer_h4  = {p: deque(maxlen=BUFFER_H4)   for p in self._todos_pares}
 
         self._vela_actual   = {}
         self._ultimo_precio = {}
-        self._spread_prom   = {p: 0.0 for p in self._pares}
+        self._spread_prom   = {p: 0.0 for p in self._todos_pares}
         self._suscriptores  = []
         self._running       = False
         self._client        = oandapyV20.API(
             access_token=OANDA_TOKEN, environment=OANDA_ENV
         )
         logger.info(
-            f"MarketAgent iniciado | {len(self._pares)} pares | "
+            f"MarketAgent iniciado | {len(self._pares)} pares activos + "
+            f"{len(self._todos_pares)-len(self._pares)} observacion | "
             f"OANDA {OANDA_ENV} | MTF: M1+{self._signal_tf}+H4"
         )
         logger.info(f"Pares activos: {self._pares}")
+        obs = [p for p in self._todos_pares if p not in self._pares]
+        if obs: logger.info(f"Pares observacion: {obs}")
 
     # ── Recarga dinámica de parámetros (hot-reload) ───────────────────────────
 
@@ -120,9 +126,28 @@ class MarketAgent:
         df = self._buf_to_df(buf[-min(n, len(buf)):])
         return self._calcular_indicadores(df)
 
-    # Alias de compatibilidad — algunos módulos aún llaman get_df_h1
     def get_df_h1(self, par: str, n: int = 80) -> Optional[pd.DataFrame]:
-        return self.get_df_m15(par, n)
+        """DataFrame H1 resampleado desde M15 con indicadores."""
+        if par not in self._buffer_m15:
+            return None
+        buf_m15 = list(self._buffer_m15[par])
+        if len(buf_m15) < 4:   # mínimo 1 vela H1
+            return None
+        try:
+            df_m15 = self._buf_to_df(buf_m15)
+            df_m15["Timestamp"] = pd.to_datetime(df_m15["Timestamp"], utc=True)
+            df_m15 = df_m15.set_index("Timestamp")
+            df_h1 = df_m15[["Open","High","Low","Close"]].resample("1h",
+                closed="left", label="left").agg(
+                {"Open":"first","High":"max","Low":"min","Close":"last"}
+            ).dropna(subset=["Close"]).reset_index()
+            if len(df_h1) < 5:
+                return None
+            df_h1 = self._calcular_indicadores(df_h1)
+            return df_h1.tail(n).reset_index(drop=True) if df_h1 is not None else None
+        except Exception as e:
+            logger.debug(f"[H1] {par} error resampleando M15→H1: {e}")
+            return None
 
     def get_df_h4(self, par: str, n: int = 50) -> Optional[pd.DataFrame]:
         """DataFrame H4 con indicadores — para confirmación de tendencia."""
@@ -135,16 +160,85 @@ class MarketAgent:
         return self._calcular_indicadores(df)
 
     def tendencia_h4(self, par: str) -> str:
-        """Tendencia del H4: 'up', 'down' o 'rango'."""
-        df = self.get_df_h4(par, n=50)
+        """
+        Tendencia del H4: 'up', 'down' o 'rango'.
+
+        Calcula H4 resampleando desde el buffer M15 (igual que el backtest),
+        eliminando la discrepancia entre datos reales de OANDA y el backtest.
+
+        Criterios (todos deben cumplirse para declarar tendencia):
+          1. EMA20 y EMA50 separadas > 0.03% del precio  (antes 0.05% — muy estricto en consolidación)
+          2. Precio actual del lado correcto de EMA20
+          3. Al menos 2 de las últimas 5 velas H4 cierran en la dirección esperada  (antes 3/5)
+
+        Si alguno falla → "rango" (el filtro bloquea la señal).
+        """
+        # ── Resamplear M15 → H4 (idéntico al backtest) ───────────────────────
+        if par not in self._buffer_m15:
+            return "rango"
+        buf_m15 = list(self._buffer_m15[par])
+        if len(buf_m15) < 64:   # mínimo ~4 velas H4
+            return "rango"
+        try:
+            df_m15 = self._buf_to_df(buf_m15)
+            df_m15["Timestamp"] = pd.to_datetime(df_m15["Timestamp"], utc=True)
+            df_m15 = df_m15.set_index("Timestamp")
+            df_h4_raw = df_m15[["Open","High","Low","Close"]].resample("4h",
+                closed="left", label="left").agg(
+                {"Open":"first","High":"max","Low":"min","Close":"last"}
+            ).dropna(subset=["Close"]).reset_index()
+            if len(df_h4_raw) < 10:
+                return "rango"
+            df = self._calcular_indicadores(df_h4_raw)
+        except Exception as e:
+            logger.debug(f"[H4] {par} error resampleando M15→H4: {e}")
+            return "rango"
+
         if df is None or len(df) < 10:
             return "rango"
-        ema20 = df["EMA_20"].iloc[-1]
-        ema50 = df["EMA_50"].iloc[-1]
-        diff_pct = abs(ema20 - ema50) / ema50 if ema50 > 0 else 0
-        if diff_pct < 0.0003:
+
+        ema20  = float(df["EMA_20"].iloc[-1] or 0)
+        ema50  = float(df["EMA_50"].iloc[-1] or 0)
+        precio = float(df["Close"].iloc[-1] or 0)
+
+        if ema20 == 0 or ema50 == 0 or precio == 0:
             return "rango"
-        return "up" if ema20 > ema50 else "down"
+
+        # 1. Separación mínima entre EMAs (relativa al precio, no a EMA50)
+        #    0.0003 = 0.03% del precio → ~3 pips en EUR/USD, ~4 pips en USD/JPY
+        #    (reducido de 0.05% — tras consolidación de 1-2 días las EMAs convergen)
+        diff_pct = abs(ema20 - ema50) / precio
+        if diff_pct < 0.0003:
+            logger.info(f"[H4] {par} rango — EMAs muy juntas: diff={diff_pct:.4%} < 0.03%")
+            return "rango"
+
+        direccion = "up" if ema20 > ema50 else "down"
+
+        # 2. Precio actual debe estar del lado correcto de EMA20
+        #    Si el precio está bajo EMA20 en tendencia "up", no es tendencia real
+        if direccion == "up"   and precio < ema20:
+            logger.info(f"[H4] {par} rango — precio bajo EMA20 en tendencia up: precio={precio:.5f} EMA20={ema20:.5f}")
+            return "rango"
+        if direccion == "down" and precio > ema20:
+            logger.info(f"[H4] {par} rango — precio sobre EMA20 en tendencia down: precio={precio:.5f} EMA20={ema20:.5f}")
+            return "rango"
+
+        # 3. Momentum de velas: al menos 2 de las últimas 5 H4 confirman dirección
+        #    (reducido de 3/5 — en consolidaciones post-tendencia fácilmente hay 3 velas en contra)
+        ultimas = df.tail(5)
+        if direccion == "up":
+            cierres_favor = (ultimas["Close"] > ultimas["Open"]).sum()
+        else:
+            cierres_favor = (ultimas["Close"] < ultimas["Open"]).sum()
+        if cierres_favor < 2:
+            logger.info(f"[H4] {par} rango — pocas velas en dirección: {cierres_favor}/5 (min=2) tendencia={direccion}")
+            return "rango"
+
+        logger.info(
+            f"[H4] {par} tendencia={direccion} | EMA20={ema20:.5f} EMA50={ema50:.5f} "
+            f"precio={precio:.5f} diff={diff_pct:.4%} velas_favor={cierres_favor}/5"
+        )
+        return direccion
 
     # ── Utilidades ────────────────────────────────────────────────────────────
 
@@ -152,12 +246,19 @@ class MarketAgent:
         return self._ultimo_precio.get(par, 0.0)
 
     def datos_frescos(self, par: str) -> bool:
-        return self.get_edad_ultima_vela(par) < MAX_EDAD
+        """Verifica que los datos M15 (no M1) sean recientes.
+
+        Las velas M15 se timbran a la hora de APERTURA, por lo que la edad
+        mínima posible es 900 s (15 min). MAX_EDAD_M15=1200 (20 min) deja
+        margen para el refresco cada 15 min + latencia de red.
+        """
+        return self.get_edad_ultima_vela_m15(par) < MAX_EDAD_M15
 
     def sesion_actual(self) -> str:
         return self._sesion(datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
 
     def get_edad_ultima_vela(self, par: str) -> float:
+        """Edad de la última vela M1 (buffer de streaming)."""
         buf = list(self._buffer.get(par, []))
         if not buf:
             return 9999
@@ -165,6 +266,23 @@ class MarketAgent:
             ts = datetime.fromisoformat(
                 buf[-1]["timestamp"].replace("Z", "+00:00")
             ).replace(tzinfo=None)
+            return (datetime.utcnow() - ts).total_seconds()
+        except Exception:
+            return 9999
+
+    def get_edad_ultima_vela_m15(self, par: str) -> float:
+        """Edad de la última vela M15 — la que usan las estrategias."""
+        buf = list(self._buffer_m15.get(par, []))
+        if not buf:
+            return 9999
+        try:
+            ts_str = buf[-1].get("timestamp") or buf[-1].get("Timestamp", "")
+            if not ts_str:
+                return 9999
+            ts = datetime.fromisoformat(
+                str(ts_str).replace("Z", "+00:00")
+            ).replace(tzinfo=None)
+            # Las velas M15 se generan cada 15 min — toleramos hasta 20 min de edad
             return (datetime.utcnow() - ts).total_seconds()
         except Exception:
             return 9999
@@ -202,7 +320,7 @@ class MarketAgent:
     async def _streaming_loop(self):
         req = pricing.PricingStream(
             accountID=OANDA_ACCOUNT,
-            params={"instruments": ",".join(self._pares)},
+            params={"instruments": ",".join(self._todos_pares)},
         )
         loop = asyncio.get_event_loop()
         logger.info("MarketAgent: streaming activo")
@@ -296,7 +414,7 @@ class MarketAgent:
             datetime.now(timezone.utc) - timedelta(days=7)
         ).strftime("%Y-%m-%dT00:00:00Z")
         logger.info("Precargando historial M1...")
-        for par in self._pares:
+        for par in self._todos_pares:
             arch = HIST_DIR / f"{par}_M1.json"
             if arch.exists():
                 try:
@@ -340,7 +458,7 @@ class MarketAgent:
         if not silencioso:
             logger.info("Precargando historial M15 y H4...")
 
-        for par in self._pares:
+        for par in self._todos_pares:
             if not self._running:
                 return
             nombre = PARES_DISPLAY.get(par, par)
@@ -441,6 +559,25 @@ class MarketAgent:
 
         if silencioso:
             logger.debug("M15/H4 refrescados silenciosamente")
+
+        # ── Persistir rolling window M15 en disco (últimas 1000 velas) ──────────
+        # Garantiza que el próximo reinicio arranque con historial completo
+        # sin necesidad de descarga. El archivo nunca supera ~120 KB por par.
+        try:
+            from config.settings import HIST_DIR as _HIST_DIR
+            ROLLING_N = 1000
+            for par in self._todos_pares:
+                try:
+                    buf = list(self._buffer_m15.get(par, []))
+                    if len(buf) < 64:
+                        continue
+                    ventana = buf[-ROLLING_N:]
+                    arch = _HIST_DIR / f"{par}_M15.json"
+                    arch.write_text(json.dumps(ventana))
+                except Exception as e:
+                    logger.debug(f"[RollingM15] {par}: error guardando — {e}")
+        except Exception:
+            pass
 
     @staticmethod
     def _cache_valida(path: P, max_age: int = MAX_CACHE_AGE) -> bool:

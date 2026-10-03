@@ -35,7 +35,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config.settings import (
     TELEGRAM_TOKEN, TELEGRAM_CHAT_ID,
-    DEEPSEEK_KEY, DEEPSEEK_BASE_URL, MODEL_DEEP, MODEL_FAST,
     PARAMS, PARAMS_FILE, TRADES_LOG, CALIB_DIR,
 )
 
@@ -53,18 +52,9 @@ class AuditAgent:
         self._params  = params or PARAMS
         self._running = False
         self._http    = httpx.AsyncClient(timeout=10)
-        self._ds      = None
         self._app     = None   # python-telegram-bot Application
+        self._tg_stopped = False  # idempotencia del apagado de Telegram
         self._ultima_calibracion = None
-
-        # Inicializar DeepSeek
-        if DEEPSEEK_KEY:
-            from openai import OpenAI
-            self._ds = OpenAI(
-                api_key  = DEEPSEEK_KEY,
-                base_url = DEEPSEEK_BASE_URL,
-            )
-            logger.info("AuditAgent: DeepSeek activo")
 
         logger.info("AuditAgent iniciado")
 
@@ -88,24 +78,45 @@ class AuditAgent:
 
             app = Application.builder().token(TELEGRAM_TOKEN).build()
 
+            # ── Autorización: solo el chat del dueño puede usar el bot ─────────
+            # Sin esto, CUALQUIERA que encontrara el bot en Telegram podía
+            # pausarlo (/pausar) o reiniciar el servicio (/reiniciar).
+            try:
+                _solo_dueno = filters.Chat(chat_id=int(TELEGRAM_CHAT_ID))
+            except (TypeError, ValueError):
+                logger.warning(
+                    "AuditAgent: TELEGRAM_CHAT_ID inválido — "
+                    "comandos de Telegram sin filtro de chat"
+                )
+                _solo_dueno = None
+
             # ── Comandos de consulta ──────────────────────────────────────────
-            app.add_handler(CommandHandler("estado",     self._cmd_estado))
-            app.add_handler(CommandHandler("trades",     self._cmd_trades))
-            app.add_handler(CommandHandler("posiciones", self._cmd_posiciones))
-            app.add_handler(CommandHandler("semana",     self._cmd_semana))
-            app.add_handler(CommandHandler("params",     self._cmd_params))
-            app.add_handler(CommandHandler("sesion",     self._cmd_sesion))
-            app.add_handler(CommandHandler("pausar",     self._cmd_pausar))
-            app.add_handler(CommandHandler("reanudar",   self._cmd_reanudar))
-            app.add_handler(CommandHandler("ayuda",      self._cmd_ayuda))
+            app.add_handler(CommandHandler("estado",     self._cmd_estado,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("trades",     self._cmd_trades,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("posiciones", self._cmd_posiciones, filters=_solo_dueno))
+            app.add_handler(CommandHandler("semana",     self._cmd_semana,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("shadow",     self._cmd_shadow,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("params",     self._cmd_params,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("sesion",     self._cmd_sesion,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("pausar",     self._cmd_pausar,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("reanudar",   self._cmd_reanudar,   filters=_solo_dueno))
+            app.add_handler(CommandHandler("grafica",    self._cmd_grafica,    filters=_solo_dueno))
+            app.add_handler(CommandHandler("reload",     self._cmd_reload,     filters=_solo_dueno))
+            app.add_handler(CommandHandler("reiniciar",  self._cmd_reiniciar,  filters=_solo_dueno))
+            app.add_handler(CommandHandler("ayuda",      self._cmd_ayuda,      filters=_solo_dueno))
 
             # ── Botones inline ────────────────────────────────────────────────
+            # NOTA: CallbackQueryHandler no acepta 'filters' en esta versión de
+            # python-telegram-bot → la verificación de chat está dentro de _handle_boton.
             app.add_handler(CallbackQueryHandler(self._handle_boton))
 
-            # ── Preguntas libres en español → DeepSeek responde ───────────────
+            # ── Texto libre: responde con datos reales del sistema ────────────
+            _filtro_texto = filters.TEXT & ~filters.COMMAND
+            if _solo_dueno is not None:
+                _filtro_texto = _filtro_texto & _solo_dueno
             app.add_handler(MessageHandler(
-                filters.TEXT & ~filters.COMMAND,
-                self._handle_pregunta_libre,
+                _filtro_texto,
+                self._handle_pregunta,
             ))
 
             self._app = app
@@ -115,6 +126,28 @@ class AuditAgent:
             await app.initialize()
             await app.start()
             await app.updater.start_polling(drop_pending_updates=True)
+
+            # Registrar comandos en Telegram (aparecen en el menú /)
+            from telegram import BotCommand
+            # Orden agrupado: primero consultas, luego control, luego app
+            await app.bot.set_my_commands([
+                # 📊 Consultas
+                BotCommand("estado",      "📊 Capital, PnL y posiciones"),
+                BotCommand("sesion",      "🕐 Sesión activa y horario"),
+                BotCommand("trades",      "📋 Últimos 10 trades"),
+                BotCommand("posiciones",  "📌 Posiciones abiertas en OANDA"),
+                BotCommand("semana",      "📈 Reporte semanal completo"),
+                BotCommand("params",      "⚙️ Parámetros activos"),
+                # 🎮 Control
+                BotCommand("pausar",      "⏸ Pausar señales nuevas"),
+                BotCommand("reanudar",    "▶️ Reanudar operación"),
+                BotCommand("reiniciar",   "🔄 Reiniciar el bot"),
+                # 📱 Mini App
+                BotCommand("grafica",     "📱 Abrir Mini App"),
+                BotCommand("reload",      "🔃 Abrir Mini App (recarga forzada)"),
+                # ℹ️ Info
+                BotCommand("ayuda",       "ℹ️ Lista de comandos"),
+            ])
 
         except Exception as e:
             logger.error(f"AuditAgent: error iniciando Telegram: {e}")
@@ -266,6 +299,43 @@ class AuditAgent:
 
         await update.message.reply_text(msg, parse_mode="HTML")
 
+    async def _cmd_shadow(self, update, context):
+        """Fase2e /shadow — reporte de estrategias en pausa (señales sin operar)."""
+        try:
+            from pathlib import Path
+            import json
+            p = Path("logs/shadow_resultados.jsonl")
+            if not p.exists() or not p.stat().st_size:
+                await update.message.reply_text(
+                    "🌑 Shadow vacío: las estrategias en pausa aún no tienen "
+                    "señales resueltas. El resolver corre cada hora."
+                )
+                return
+            por_est: dict = {}
+            for l in p.read_text(encoding="utf-8").splitlines():
+                if not l.strip():
+                    continue
+                r = json.loads(l)
+                e = por_est.setdefault(r["estrategia"], {"n": 0, "w": 0, "l": 0, "R": 0.0})
+                e["n"] += 1
+                if r.get("resultado") == "win":
+                    e["w"] += 1
+                elif r.get("resultado") == "loss":
+                    e["l"] += 1
+                e["R"] += float(r.get("R", 0))
+            lineas = ["🌑 <b>SHADOW — estrategias en pausa</b>", "─" * 28]
+            for est, e in sorted(por_est.items(), key=lambda x: -x[1]["R"]):
+                decid = e["w"] + e["l"]
+                wr = e["w"] / decid if decid else 0
+                lineas.append(f"<b>{est}</b>: {e['n']} señales · WR {wr:.0%} · R {e['R']:+.1f}")
+            lineas.append("─" * 28)
+            lineas.append("Señales sin operar. Candidatas con R+ sostenido → evaluar activación.")
+            await update.message.reply_text("\n".join(lineas), parse_mode="HTML")
+        except Exception as ex:
+            logger.warning(f"/shadow falló: {ex}")
+            await update.message.reply_text(f"Error leyendo shadow: {ex}")
+
+
     async def _cmd_params(self, update, context):
         """/ params — parámetros calibrados activos."""
         p   = self._params
@@ -338,41 +408,209 @@ class AuditAgent:
         await update.message.reply_text(msg, parse_mode="HTML")
 
     async def _cmd_pausar(self, update, context):
-        """/ pausar — pausa temporalmente el sistema."""
-        self._params["_pausado"] = True
-        await update.message.reply_text("⏸ Sistema pausado. Usa /reanudar para continuar.")
+        """Fase2f /pausar — pausa REAL: escribe "pausado" en strategy_params.json;
+        el ParamsWatcher lo propaga a SignalAgent y RiskExecutionAgent en ≤30s."""
+        try:
+            with open(PARAMS_FILE, encoding="utf-8") as f:
+                params = json.load(f)
+            params["pausado"] = True
+            with open(PARAMS_FILE, "w", encoding="utf-8") as f:
+                json.dump(params, f, ensure_ascii=False, indent=2)
+            self._params["pausado"] = True
+            logger.info("[Telegram /pausar] sistema pausado")
+            await update.message.reply_text(
+                "⏸ <b>Sistema pausado.</b>\n"
+                "No se generarán señales nuevas ni se abrirán trades.\n"
+                "Las posiciones abiertas siguen monitoreadas.\n"
+                "Usa /reanudar para continuar.",
+                parse_mode="HTML")
+        except Exception as exc:
+            await update.message.reply_text(f"❌ Error al pausar: {exc}")
 
     async def _cmd_reanudar(self, update, context):
-        """/ reanudar — reanuda el sistema."""
-        self._params.pop("_pausado", None)
-        await update.message.reply_text("▶️ Sistema reanudado.")
+        """Fase2f /reanudar — quita la pausa (vía strategy_params.json)."""
+        try:
+            with open(PARAMS_FILE, encoding="utf-8") as f:
+                params = json.load(f)
+            params["pausado"] = False
+            with open(PARAMS_FILE, "w", encoding="utf-8") as f:
+                json.dump(params, f, ensure_ascii=False, indent=2)
+            self._params["pausado"] = False
+            logger.info("[Telegram /reanudar] sistema reanudado")
+            await update.message.reply_text("▶️ <b>Sistema reanudado.</b>", parse_mode="HTML")
+        except Exception as exc:
+            await update.message.reply_text(f"❌ Error al reanudar: {exc}")
+
+    async def _cmd_setparam(self, update, context):
+        """/setparam <campo> <valor> — cambia un parámetro numérico o de lista en tiempo real.
+
+        Ejemplos:
+          /setparam min_confidence 0.72
+          /setparam riesgo_pct 0.005
+          /setparam adx_min_operar 27
+          /setparam cooldown_minutes 15
+          /setparam max_posiciones 6
+
+        El cambio se escribe en strategy_params.json y el ParamsWatcher lo propaga
+        a todos los agentes en ≤30 segundos sin reiniciar el bot.
+        """
+        # Campos numéricos permitidos (whitelist de seguridad)
+        CAMPOS_FLOAT = {
+            "min_confidence", "riesgo_pct", "rr_ratio", "sl_atr_mult",
+            "min_win_rate", "max_drawdown_dia", "circuit_breaker_pct",
+        }
+        CAMPOS_INT = {
+            "adx_min_operar", "cooldown_minutes", "max_posiciones", "max_pos_par",
+            "min_sl_pips", "max_sl_pips", "max_trade_hours", "max_consecutive_losses",
+            "m1_entry_timeout_min", "min_pips_to_hold",
+        }
+
+        args = context.args if context.args else []
+        if len(args) != 2:
+            await update.message.reply_text(
+                "⚠️ Uso: /setparam <campo> <valor>\n"
+                "Ejemplo: /setparam min_confidence 0.72\n\n"
+                f"Campos numéricos: {', '.join(sorted(CAMPOS_FLOAT | CAMPOS_INT))}"
+            )
+            return
+
+        campo, valor_str = args[0], args[1]
+        if campo not in CAMPOS_FLOAT and campo not in CAMPOS_INT:
+            await update.message.reply_text(
+                f"❌ Campo '{campo}' no permitido o no es numérico.\n"
+                f"Campos disponibles: {', '.join(sorted(CAMPOS_FLOAT | CAMPOS_INT))}"
+            )
+            return
+
+        try:
+            valor = float(valor_str) if campo in CAMPOS_FLOAT else int(valor_str)
+        except ValueError:
+            await update.message.reply_text(f"❌ Valor '{valor_str}' no es un número válido.")
+            return
+
+        # Validaciones básicas
+        if campo == "min_confidence" and not (0.5 <= valor <= 1.0):
+            await update.message.reply_text("❌ min_confidence debe estar entre 0.50 y 1.00")
+            return
+        if campo == "riesgo_pct" and not (0 < valor <= 0.02):
+            await update.message.reply_text("❌ riesgo_pct debe estar entre 0.001 y 0.02")
+            return
+
+        # Leer → modificar → escribir → informar
+        try:
+            with open(PARAMS_FILE, encoding="utf-8") as f:
+                params = json.load(f)
+
+            valor_anterior = params.get(campo, "N/A")
+            params[campo] = valor
+
+            with open(PARAMS_FILE, "w", encoding="utf-8") as f:
+                json.dump(params, f, ensure_ascii=False, indent=2)
+
+            # Actualizar params local del AuditAgent también
+            self._params[campo] = valor
+
+            logger.info(f"[Telegram /setparam] {campo}: {valor_anterior} → {valor}")
+            await update.message.reply_text(
+                f"✅ <b>{campo}</b> actualizado\n"
+                f"  Antes : {valor_anterior}\n"
+                f"  Ahora : {valor}\n\n"
+                f"⏱ ParamsWatcher aplicará el cambio a todos los agentes en ≤30 seg.",
+                parse_mode="HTML"
+            )
+        except Exception as exc:
+            logger.error(f"[Telegram /setparam] Error: {exc}")
+            await update.message.reply_text(f"❌ Error al guardar: {exc}")
+
+    async def _cmd_grafica(self, update, context):
+        """/ grafica — abre la Mini App siempre con versión actualizada."""
+        import os, time
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+        webapp_url = os.getenv("WEBAPP_URL", "http://24.199.87.217:8080")
+        # Timestamp para bypass de caché — igual que /reload
+        url_fresh  = f"{webapp_url}?v={int(time.time())}"
+
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                text="📈 Abrir Mini App",
+                web_app=WebAppInfo(url=url_fresh),
+            )
+        ]])
+
+        await update.message.reply_text(
+            "📊 <b>Trading Bot v11 — Monitor</b>\n"
+            "Toca el botón para abrir la app en tiempo real.",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+
+    async def _cmd_reload(self, update, context):
+        """/reload — abre la Mini App forzando recarga (bypass caché de Telegram)."""
+        import os, time
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+
+        webapp_url = os.getenv("WEBAPP_URL", "http://24.199.87.217:8080")
+        # Agregar timestamp para que Telegram trate la URL como nueva y no use caché
+        url_fresh = f"{webapp_url}?v={int(time.time())}"
+
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                text="⟳ Abrir versión actualizada",
+                web_app=WebAppInfo(url=url_fresh),
+            )
+        ]])
+
+        await update.message.reply_text(
+            "⟳ <b>Recarga forzada</b>\n"
+            "Toca el botón — esta URL incluye un timestamp único\n"
+            "que fuerza a Telegram a descargar la versión más reciente.",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
 
     async def _cmd_ayuda(self, update, context):
         """/ ayuda — lista de comandos disponibles."""
         sep = "─" * 28
         msg = (
-            f"🤖 <b>TRADING BOT v14 — COMANDOS</b>\n"
+            f"🤖 <b>TRADING BOT v11 — COMANDOS</b>\n"
             f"{sep}\n"
-            f"/estado      → Capital, PnL, posiciones\n"
-            f"/sesion      → Sesión activa y estado del día\n"
-            f"/trades      → Últimos 10 trades\n"
-            f"/posiciones  → Posiciones abiertas en OANDA\n"
-            f"/semana      → Reporte semanal completo\n"
-            f"/params      → Parámetros activos\n"
-            f"/pausar      → Pausar señales nuevas\n"
-            f"/reanudar    → Reanudar operación\n"
-            f"/ayuda       → Esta lista\n"
+            f"📊 <b>Consultas</b>\n"
+            f"/estado     · Capital, PnL, posiciones\n"
+            f"/sesion     · Sesión activa y horario\n"
+            f"/trades     · Últimos 10 trades\n"
+            f"/posiciones · Posiciones abiertas\n"
+            f"/semana     · Reporte semanal\n"
+            f"/shadow     · Estrategias en pausa\n"
+            f"/params     · Parámetros activos\n"
+            f"\n🎮 <b>Control</b>\n"
+            f"/pausar     · Pausar señales nuevas\n"
+            f"/reanudar   · Reanudar operación\n"
+            f"/reiniciar  · Reiniciar el bot\n"
+            f"\n📱 <b>Mini App</b>\n"
+            f"/grafica    · Abrir app (versión fresca)\n"
+            f"/reload     · Abrir app forzando recarga\n"
+            f"\n/ayuda     · Esta lista\n"
             f"{sep}\n"
-            f"💬 Escribe cualquier pregunta en español\n"
-            f"y el bot responderá con datos reales del sistema.\n\n"
-            f"🕐 Horario activo: Lun-Vie 07:00-17:00 UTC\n"
-            f"🧠 Motor: deepseek-chat (briefing) + reasoner (decisión)"
+            f"💬 Escribe en español y el bot responde con datos reales.\n"
+            f"Ej: <i>¿cuál es el capital?</i> · <i>¿hay posiciones abiertas?</i>\n\n"
+            f"🕐 Horario activo: Lun-Vie 07:00-17:00 UTC"
         )
         await update.message.reply_text(msg, parse_mode="HTML")
 
     async def _handle_boton(self, update, context):
         """Maneja los botones inline del teclado."""
         query = update.callback_query
+        # Verificación de chat: CallbackQueryHandler no acepta 'filters' en esta
+        # versión de python-telegram-bot, así que se valida aquí explícitamente.
+        try:
+            chat_id = query.message.chat_id if query.message else None
+            if str(chat_id) != str(TELEGRAM_CHAT_ID):
+                await query.answer("No autorizado.", show_alert=True)
+                logger.warning(f"Botón inline no autorizado desde chat {chat_id}")
+                return
+        except Exception:
+            pass
         await query.answer()
         data  = query.data
 
@@ -390,57 +628,113 @@ class AuditAgent:
             await self._cmd_semana(fake, context)
         elif data == "params":
             await self._cmd_params(fake, context)
+        elif data == "confirm_restart":
+            await self._ejecutar_reinicio(query)
+        elif data == "cancel_restart":
+            await query.edit_message_text("✅ Reinicio cancelado — bot sigue activo.")
 
-    async def _handle_pregunta_libre(self, update, context):
-        """Cualquier texto libre → DeepSeek responde con contexto real."""
-        pregunta = update.message.text
+    async def _handle_pregunta(self, update, context):
+        """
+        Responde preguntas en texto libre usando datos reales del sistema.
+        Sin IA — detección por keywords y formateo de datos en vivo.
+        """
+        texto = (update.message.text or "").lower()
+        snap  = self._risk.snapshot() if self._risk else {}
 
-        if not self._ds:
+        # ── Capital / balance ─────────────────────────────────────────────────
+        if any(k in texto for k in ["capital", "balance", "dinero", "cuenta", "saldo"]):
+            cap = snap.get("capital", 0)
+            dd  = snap.get("dd_dia", 0)
             await update.message.reply_text(
-                "DeepSeek no configurado. Usa los comandos del menú."
+                f"💰 <b>Capital actual:</b> ${cap:.2f}\n"
+                f"📉 DD del día: {dd:.1%}",
+                parse_mode="HTML"
             )
-            return
 
-        # Construir contexto del sistema
-        snap       = self._risk.snapshot() if self._risk else {}
-        trades     = self._cargar_trades_recientes(n=20)
-        pnl_sem    = sum(t.get("pnl", 0) for t in trades if "pnl" in t)
-        wins_sem   = sum(1 for t in trades if t.get("pnl", 0) > 0)
-        wr_sem     = wins_sem / len(trades) if trades else 0
+        # ── Posiciones abiertas ───────────────────────────────────────────────
+        elif any(k in texto for k in ["posicion", "abiert", "trade abiert", "en mercado"]):
+            await self._cmd_posiciones(update, context)
 
-        contexto = f"""
-Eres el asistente del Trading Bot v11 Forex.
-Responde en español, de forma concisa (máximo 200 palabras).
+        # ── Estado general ────────────────────────────────────────────────────
+        elif any(k in texto for k in ["estado", "como va", "cómo va", "como está", "resumen", "reporte"]):
+            await self._cmd_estado(update, context)
 
-ESTADO ACTUAL:
-- Capital: ${snap.get('capital', 0):.2f}
-- Posiciones abiertas: {snap.get('posiciones', 0)}
-- PnL semana: ${pnl_sem:+.4f}
-- WR semana: {wr_sem:.1%}
-- Trades semana: {len(trades)}
-- Parámetros: SL={self._params['sl_atr_mult']}×ATR, RR={self._params['rr_ratio']}
-- Estrategias activas: {', '.join(self._params['estrategias_activas'])}
+        # ── Trades / historial ────────────────────────────────────────────────
+        elif any(k in texto for k in ["trade", "operacion", "operación", "historial", "ultimo", "último"]):
+            await self._cmd_trades(update, context)
 
-ÚLTIMOS 5 TRADES:
-{json.dumps(trades[:5], default=str, ensure_ascii=False)[:800]}
+        # ── Semana / rendimiento ──────────────────────────────────────────────
+        elif any(k in texto for k in ["semana", "rendimiento", "pnl", "ganancia", "perdida", "pérdida", "resultado"]):
+            await self._cmd_semana(update, context)
 
-PREGUNTA: {pregunta}
-"""
+        # ── Parámetros / configuración ────────────────────────────────────────
+        elif any(k in texto for k in ["param", "config", "estrategia", "adx", "riesgo", "sl", "rr"]):
+            await self._cmd_params(update, context)
+
+        # ── Sesión ────────────────────────────────────────────────────────────
+        elif any(k in texto for k in ["sesion", "sesión", "horario", "london", "activo"]):
+            await self._cmd_sesion(update, context)
+
+        # ── Default: ayuda ────────────────────────────────────────────────────
+        else:
+            await update.message.reply_text(
+                "🤖 No entendí la pregunta. Prueba con:\n\n"
+                "• <i>\"¿Cuál es el capital?\"</i>\n"
+                "• <i>\"¿Hay posiciones abiertas?\"</i>\n"
+                "• <i>\"¿Cómo va la semana?\"</i>\n"
+                "• <i>\"¿Cuáles son los parámetros?\"</i>\n\n"
+                "O usa los comandos: /estado /trades /semana /ayuda",
+                parse_mode="HTML"
+            )
+
+    async def _cmd_reiniciar(self, update, context):
+        """
+        /reiniciar — reinicia el servicio trading_bot con confirmación por botones.
+        Envía la confirmación ANTES de ejecutar el restart para que el mensaje llegue.
+        """
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Sí, reiniciar", callback_data="confirm_restart"),
+            InlineKeyboardButton("❌ Cancelar",       callback_data="cancel_restart"),
+        ]])
+        await update.message.reply_text(
+            "⚠️ <b>¿Reiniciar el bot?</b>\n\n"
+            "El sistema se detendrá ~5 segundos y volverá a arrancar.\n"
+            "Las posiciones abiertas NO se cierran — OANDA las mantiene.",
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+
+    async def _ejecutar_reinicio(self, query):
+        """Ejecuta el reinicio tras confirmación del botón inline."""
+        import subprocess, asyncio
+        # Defensa en profundidad: el filtro de chat ya bloquea a extraños,
+        # pero el reinicio de un servicio systemd merece verificación explícita.
         try:
-            loop     = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._ds.chat.completions.create(
-                    model    = MODEL_FAST,
-                    messages = [{"role": "user", "content": contexto}],
-                    max_tokens = 250,
-                )
+            chat_id = query.message.chat_id if query.message else None
+            if str(chat_id) != str(TELEGRAM_CHAT_ID):
+                await query.answer("No autorizado.", show_alert=True)
+                logger.warning(f"Intento de reinicio no autorizado desde chat {chat_id}")
+                return
+        except Exception:
+            pass
+        await query.edit_message_text(
+            "🔄 <b>Reiniciando bot...</b>\n"
+            "Recibirás una notificación cuando vuelva a estar activo.",
+            parse_mode="HTML"
+        )
+        # Pequeño delay para que el mensaje llegue antes de que el proceso muera
+        await asyncio.sleep(1)
+        try:
+            subprocess.Popen(
+                ["systemctl", "restart", "trading_bot"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
-            respuesta = response.choices[0].message.content
         except Exception as e:
-            respuesta = f"Error consultando IA: {e}"
-
-        await update.message.reply_text(respuesta)
+            logger.error(f"Error reiniciando: {e}")
+            await self._enviar(f"⚠️ Error al reiniciar: {e}")
 
     # ════════════════════════════════════════════════════════════════
     # NOTIFICACIONES AUTOMÁTICAS
@@ -460,7 +754,7 @@ PREGUNTA: {pregunta}
             f"📋 Modo:        <b>{modo.upper()}</b>\n"
             f"📊 Pares:       {', '.join(p.replace('_','/') for p in pares)}\n"
             f"🕐 Sesiones:    {', '.join(sesiones)} (07:00-17:00 UTC)\n"
-            f"🧠 Señales:     Briefing (chat) → Decisor (reasoner)\n"
+            f"🧠 Señales:     Patrón puro (matemático, sin IA)\n"
             f"⚙️ ADX mín:     {adx_min} | Timeout: {timeout}h | RR: {self._params.get('rr_ratio',2.0)}"
         )
         await self._enviar(msg)
@@ -737,6 +1031,12 @@ PREGUNTA: {pregunta}
 
         # ── Selección de estrategias ─────────────────────────────────────────
         MIN_TRADES_STRAT = 50  # 50+ trades por estrategia antes de pausarla
+
+        # Estrategias con implementación nueva: sus trades anteriores a la fecha
+        # de corrección no son representativos y no deben usarse para pausarlas.
+        # Formato: {"Hammer": "2026-05-29", "Doji": "2026-05-29"}
+        reimplementadas = params.get("estrategias_reimplementadas", {})
+
         todas_strats = list({
             *params.get("estrategias_activas", []),
             *params.get("estrategias_pausadas", []),
@@ -745,7 +1045,29 @@ PREGUNTA: {pregunta}
         strats_pausadas_new = []
 
         for strat in todas_strats:
-            s = stats_strat.get(strat)
+            # Si la estrategia fue reimplementada, recalcular stats solo con
+            # trades desde la fecha del fix (implementación nueva)
+            if strat in reimplementadas:
+                fecha_fix = reimplementadas[strat]
+                trades_validos = [
+                    t for t in trades
+                    if t.get("estrategia") == strat
+                    and str(t.get("opened_at", t.get("timestamp", "")))[:10] >= fecha_fix
+                ]
+                if len(trades_validos) < MIN_TRADES_STRAT:
+                    # Sin suficientes datos limpios — mantener activa sin evaluar
+                    strats_activas_new.append(strat)
+                    logger.info(
+                        f"[AuditAgent.calibrar]  PROTEGIDA (reimpl {fecha_fix}): {strat} "
+                        f"solo {len(trades_validos)} trades válidos post-fix — mantener activa"
+                    )
+                    continue
+                # Suficientes trades post-fix: evaluar normalmente con datos limpios
+                wins_validos = sum(1 for t in trades_validos if float(t.get("pnl", 0)) > 0)
+                s = {"n": len(trades_validos), "wins": wins_validos}
+            else:
+                s = stats_strat.get(strat)
+
             if s and s["n"] >= MIN_TRADES_STRAT:
                 wr = s["wins"] / s["n"]
                 # Umbral algo más permisivo que breakeven puro (80%) por ruido estadístico
@@ -975,31 +1297,63 @@ PREGUNTA: {pregunta}
             await self.notificar_estado()
 
     async def _analisis_semanal(self):
-        """Análisis completo del sábado con DeepSeek V4-Pro + QuantStats."""
-        logger.info("AuditAgent: iniciando análisis semanal (sábado)")
-        await self._enviar(
-            "🔬 <b>ANÁLISIS SEMANAL</b>\n"
-            "Procesando trades de la semana..."
-        )
+        """Reporte semanal con métricas matemáticas puras (sin DeepSeek)."""
+        logger.info("AuditAgent: iniciando análisis semanal")
+        await self._enviar("🔬 <b>ANÁLISIS SEMANAL</b>\nCalculando métricas...")
 
         trades = self._cargar_trades_semana()
-        if not trades or len(trades) < 5:
-            await self._enviar("Sin suficientes trades para analizar.")
+        if not trades or len(trades) < 3:
+            await self._enviar(
+                "📋 <b>REPORTE SEMANAL</b>\n"
+                "Sin suficientes trades esta semana (mínimo 3).\n"
+                "El sistema sigue activo y monitoreando."
+            )
             return
 
-        # Métricas con QuantStats
         metricas = self._calcular_metricas(trades)
-
-        # Análisis y propuestas con DeepSeek V4-Pro
-        if self._ds:
-            analisis = await self._consultar_deepseek_calibracion(
-                trades, metricas
-            )
-        else:
-            analisis = {"accion_inmediata": "Sin DeepSeek — análisis manual"}
-
-        # Reporte Telegram
+        analisis = self._analisis_matematico(trades, metricas)
         await self._reporte_semanal_telegram(metricas, analisis)
+
+    def _analisis_matematico(self, trades: list, metricas: dict) -> dict:
+        """Análisis y recomendaciones basadas en matemática pura, sin LLM."""
+        wr  = metricas.get("wr", 0)
+        pf  = metricas.get("pf") or 0
+        n   = metricas.get("n", 0)
+        rr  = self._params.get("rr_ratio", 2.0)
+        breakeven_wr = 1 / (1 + rr)
+
+        # Por estrategia
+        por_strat = {}
+        for t in trades:
+            s = t.get("estrategia", "?")
+            if s not in por_strat:
+                por_strat[s] = {"ops": 0, "wins": 0, "pnl": 0.0}
+            por_strat[s]["ops"] += 1
+            por_strat[s]["pnl"] += t.get("pnl", 0)
+            if t.get("pnl", 0) > 0:
+                por_strat[s]["wins"] += 1
+
+        # Diagnóstico automático
+        if n < 10:
+            accion = f"Muestra pequeña ({n} trades) — continuar acumulando datos antes de ajustar."
+        elif wr >= breakeven_wr + 0.05:
+            accion = f"WR {wr:.1%} sobre breakeven ({breakeven_wr:.1%}) — sistema funcionando. Mantener config."
+        elif wr >= breakeven_wr:
+            accion = f"WR {wr:.1%} cerca del breakeven ({breakeven_wr:.1%}) — monitorear próxima semana."
+        else:
+            accion = f"WR {wr:.1%} bajo breakeven ({breakeven_wr:.1%}) — revisar filtro H4 y ADX."
+
+        # Estrategia con peor desempeño
+        peor = min(por_strat.items(),
+                   key=lambda x: x[1]["pnl"] / max(x[1]["ops"], 1),
+                   default=(None, {}))
+        strat_problema = peor[0] if peor[0] and peor[1].get("pnl", 0) < 0 else None
+
+        return {
+            "accion_inmediata": accion,
+            "sugerencias": [],
+            "estrategia_problema": strat_problema,
+        }
 
     def _calcular_metricas(self, trades: list) -> dict:
         """Calcula métricas con QuantStats."""
@@ -1037,77 +1391,6 @@ PREGUNTA: {pregunta}
                 "sharpe":  None, "sortino": None, "max_dd": None, "pf": None,
             }
 
-    async def _consultar_deepseek_calibracion(self, trades: list,
-                                               metricas: dict) -> dict:
-        """Consulta DeepSeek V4-Pro para calibración de parámetros."""
-        por_strat = {}
-        for t in trades:
-            s = t.get("estrategia", "?")
-            if s not in por_strat:
-                por_strat[s] = {"ops": 0, "wins": 0, "pnl": 0}
-            por_strat[s]["ops"] += 1
-            por_strat[s]["pnl"] += t.get("pnl", 0)
-            if t.get("pnl", 0) > 0:
-                por_strat[s]["wins"] += 1
-
-        prompt = f"""
-Analiza el rendimiento semanal del sistema Forex y propón ajustes.
-
-MÉTRICAS:
-{json.dumps(metricas)}
-
-POR ESTRATEGIA:
-{json.dumps(por_strat)}
-
-PARÁMETROS ACTUALES:
-SL_mult={self._params['sl_atr_mult']}, RR={self._params['rr_ratio']}
-WR_min={self._params['min_win_rate']}, cooldown={self._params['cooldown_minutes']}
-
-Propón máximo 2 cambios concretos con impacto estimado.
-JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":val,"propuesto":val,"impacto":"texto"}}],"estrategia_problema":"nombre_o_null"}}
-"""
-        try:
-            loop     = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._ds.chat.completions.create(
-                    model      = MODEL_FAST,   # chat soporta json_object; reasoner no
-                    messages   = [{"role": "user", "content": prompt}],
-                    response_format = {"type": "json_object"},
-                    max_tokens = 400,
-                )
-            )
-            texto = (response.choices[0].message.content or "").strip()
-            texto = re.sub(r"```json\s*", "", texto)
-            texto = re.sub(r"```\s*",     "", texto).strip()
-            if not texto:
-                raise ValueError("Respuesta vacia de DeepSeek")
-            _data = json.loads(texto)
-            # Guardrail: nunca vaciar estrategias o pares activos
-            if isinstance(_data.get('estrategias_activas'), list) and len(_data['estrategias_activas']) == 0:
-                _data['estrategias_activas'] = (
-                    self._params.get('estrategias_activas') or
-                    ['Doji', 'Hammer', 'Engulfing', 'RSI_Bollinger', 'RSI_Divergence']
-                )
-            if isinstance(_data.get('pares_activos'), list) and len(_data['pares_activos']) == 0:
-                _data['pares_activos'] = self._params.get('pares_activos') or []
-            return _data
-        except Exception as e:
-            logger.error(f"Error calibración DeepSeek: {e}")
-            # Fallback: preservar todos los params actuales
-            _p = self._params
-            return {
-                'accion_inmediata':    'Error en analisis automatico',
-                'estrategias_activas': _p.get('estrategias_activas',
-                    ['Doji','Hammer','Engulfing','RSI_Bollinger','RSI_Divergence']),
-                'estrategias_pausadas': _p.get('estrategias_pausadas', []),
-                'pares_activos':       _p.get('pares_activos', []),
-                'rr_ratio':            _p.get('rr_ratio', 2.0),
-                'sl_atr_mult':         _p.get('sl_atr_mult', 1.5),
-                'min_confidence':      _p.get('min_confidence', 0.3),
-                'riesgo_pct':          _p.get('riesgo_pct', 0.01),
-                'sugerencias':         [],
-            }
 
     async def _reporte_semanal_telegram(self, metricas: dict, analisis: dict):
         """Envía el reporte semanal por Telegram."""
@@ -1237,8 +1520,43 @@ JSON: {{"accion_inmediata":"texto","sugerencias":[{{"param":"nombre","actual":va
         except Exception:
             return []
 
+    def reload_params(self, new_params: dict) -> None:
+        """Callback de ParamsWatcher — actualiza parámetros en caliente."""
+        self._params = new_params
+        logger.info(
+            f"AuditAgent reload_params: "
+            f"activas={new_params.get('estrategias_activas', [])} | "
+            f"min_conf={new_params.get('min_confidence')}"
+        )
+
     def stop(self):
         self._running = False
-        if self._app:
-            asyncio.create_task(self._app.stop())
+        # NOTA: el apagado real de Telegram es async (ashutdown), ejecutado por
+        # main.py. No crear tasks aquí: la task huérfana + el doble stop()
+        # causaban "RuntimeError: This Application is not running!".
         logger.info("AuditAgent detenido")
+
+    async def ashutdown(self):
+        """Apagado limpio de python-telegram-bot: updater → app → shutdown.
+
+        Idempotente: main.py lo llama una vez en el finally; llamadas
+        repetidas no hacen nada.
+        """
+        if self._tg_stopped:
+            return
+        self._tg_stopped = True
+        app, self._app = self._app, None
+        if app is None:
+            return
+        try:
+            updater = getattr(app, "updater", None)
+            if updater is not None and getattr(updater, "running", False):
+                await updater.stop()
+            await app.stop()
+            await app.shutdown()
+            logger.info("AuditAgent: Telegram apagado limpiamente")
+        except RuntimeError as e:
+            # p.ej. "This Application is not running!" si ya se detuvo
+            logger.debug(f"AuditAgent: Telegram ya estaba detenido ({e})")
+        except Exception as e:
+            logger.warning(f"AuditAgent: error apagando Telegram: {e}")

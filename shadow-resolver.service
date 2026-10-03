@@ -1,0 +1,9 @@
+[Unit]
+Description=Trading Bot v11 — resuelve resultados de señales shadow
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/trading_bot_v11
+ExecStart=/root/trading_bot_v11/venv/bin/python scripts/shadow_resolver.py

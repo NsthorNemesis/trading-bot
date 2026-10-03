@@ -1,0 +1,10 @@
+[Unit]
+Description=Trading Bot v11 — resolver shadow cada hora
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+Unit=shadow-resolver.service
+
+[Install]
+WantedBy=timers.target

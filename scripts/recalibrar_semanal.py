@@ -197,7 +197,7 @@ def backtest_estrategia(df, estrategia_nombre: str, par: str,
     """
     try:
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from strategies import load_strategies
+        from legacy.strategies import load_strategies
         strats = load_strategies(active_only=[estrategia_nombre])
         if estrategia_nombre not in strats:
             return _resultado_vacio(estrategia_nombre, par)

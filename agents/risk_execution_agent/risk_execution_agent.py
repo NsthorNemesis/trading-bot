@@ -68,6 +68,7 @@ class RiskExecutionAgent:
         self._peak       = self._capital
         self._pos_abiertas: dict[str, dict] = {}  # trade_id → info
         self._dd_dia     = 0.0
+        self._dd_dia_fecha = datetime.now(timezone.utc).date()  # fase2d: para reset diario
         self._running    = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None  # capturado en run()
 
@@ -118,6 +119,8 @@ class RiskExecutionAgent:
 
         # Sincronizar trades abiertos en OANDA al arrancar (evita huérfanos)
         self._sincronizar_trades_oanda()
+        # Reconciliar trades sin estado (cerrados mientras el bot estaba apagado)
+        self._reconciliar_trades_pendientes()
 
     # ── SINCRONIZACIÓN AL ARRANCAR ────────────────────────────────────────────
 
@@ -222,6 +225,55 @@ class RiskExecutionAgent:
         except Exception as e:
             logger.error(f"Error sincronizando trades al arrancar: {e}")
 
+    def _reconciliar_trades_pendientes(self):
+        """
+        Al arrancar, revisa trades.json buscando entradas sin 'estado'.
+        Para cada una consulta OANDA: si ya no está abierta, obtiene el PnL
+        real y marca el trade como cerrado. Esto cubre el caso de trades
+        que cerraron por SL/TP mientras el bot estaba apagado o reiniciando.
+        """
+        try:
+            log_data = json.loads(TRADES_LOG.read_text())
+        except Exception:
+            return
+
+        pendientes = [
+            t for t in log_data
+            if t.get("oanda_id") and "estado" not in t
+        ]
+
+        if not pendientes:
+            return
+
+        logger.info(f"Reconciliación startup: {len(pendientes)} trade(s) sin estado — verificando en OANDA")
+
+        # Obtener IDs actualmente abiertos en OANDA
+        try:
+            r = oanda_trades.OpenTrades(OANDA_ACCOUNT)
+            self._oanda.request(r)
+            ids_abiertos = {str(t["id"]) for t in r.response.get("trades", [])}
+        except Exception as e:
+            logger.error(f"Reconciliación: error obteniendo trades abiertos: {e}")
+            return
+
+        for t in pendientes:
+            oanda_id = str(t["oanda_id"])
+            par      = t.get("par", "")
+
+            if oanda_id in ids_abiertos:
+                # Sigue abierto — el startup sync lo adoptará como huérfano si no está en _pos_abiertas
+                logger.debug(f"Reconciliación: {oanda_id} sigue abierto en OANDA")
+                continue
+
+            # Ya no está abierto — obtener PnL del historial de OANDA
+            pnl = self._obtener_pnl_cierre(par, oanda_id)
+            self._actualizar_trade_cerrado(oanda_id, pnl)
+            resultado = "GANADORA" if pnl > 0 else "PERDEDORA"
+            logger.info(
+                f"Reconciliación: {par} ID={oanda_id} cerrado | "
+                f"PnL=${pnl:+.4f} | {resultado}"
+            )
+
     # ── LOOP PRINCIPAL ────────────────────────────────────────────────────────
 
     async def run(self):
@@ -251,6 +303,11 @@ class RiskExecutionAgent:
         """
         par = senal["par"]
 
+        # ── Pausa manual (/pausar en Telegram): no abrir nada nuevo ───────────
+        if self._params.get("pausado"):
+            logger.info(f"Señal {par} rechazada: sistema pausado (/pausar)")
+            return None
+
         # ── VALIDACIONES PYTHON PURO (sin LLM) ───────────────────────────────
         if not self._validar_capital():
             return None
@@ -260,7 +317,7 @@ class RiskExecutionAgent:
             return None
         if not self._validar_max_posiciones():
             return None
-        if not self._validar_max_pos_par(par):
+        if not self._validar_max_pos_par(par, senal.get("dir")):
             return None
         if not self._validar_consecutive_loss_cooldown(par):
             return None
@@ -432,7 +489,8 @@ class RiskExecutionAgent:
             sl_base = entry + sl_dist_base
             tp_base = entry - sl_dist_base * rr
 
-        if not self._ds:
+        # Respetar use_deepseek del params (igual que signal_agent)
+        if not self._ds or not self._params.get("use_deepseek", True):
             return sl_base, tp_base
 
         # DeepSeek — hasta 3 intentos
@@ -571,6 +629,30 @@ class RiskExecutionAgent:
             fill_price = float(fill.get("price", senal["entry"]))
             risk_usd   = self._capital * self._params.get("riesgo_pct", 0.01)
 
+            # ── Nivel 1: recalcular SL/TP con el precio real de fill ────────────
+            # Si OANDA ejecutó a un precio diferente al calculado (slippage),
+            # SL y TP quedan desplazados. Los recalculamos manteniendo las mismas
+            # distancias (ATR-based) pero ancladas al fill real.
+            pip_unit   = 0.01 if "JPY" in par else 0.0001
+            decimals   = 3    if "JPY" in par else 5
+            slippage   = abs(fill_price - senal["entry"])
+            sl_final   = sl
+            tp_final   = tp
+            if slippage > pip_unit * 0.5:  # solo ajustar si hay >0.5 pip de slippage
+                sl_dist = abs(sl - senal["entry"])
+                tp_dist = abs(tp - senal["entry"])
+                if senal["dir"] == "long":
+                    sl_final = round(fill_price - sl_dist, decimals)
+                    tp_final = round(fill_price + tp_dist, decimals)
+                else:
+                    sl_final = round(fill_price + sl_dist, decimals)
+                    tp_final = round(fill_price - tp_dist, decimals)
+                logger.info(
+                    f"[FillAdj] {par} slippage={slippage/pip_unit:.1f}pip | "
+                    f"entry_senal={senal['entry']:.5f} fill={fill_price:.5f} | "
+                    f"SL {sl:.5f}→{sl_final:.5f} TP {tp:.5f}→{tp_final:.5f}"
+                )
+
             # Registrar posición abierta
             info = {
                 "trade_id":   trade_id,
@@ -579,11 +661,12 @@ class RiskExecutionAgent:
                 "dir":        senal["dir"],
                 "estrategia": senal["estrategia"],
                 "entry":      fill_price,
-                "sl":         sl,
-                "sl_original": sl,     # referencia para BE/trailing
-                "tp":         tp,
+                "sl":         sl_final,
+                "sl_original": sl_final,   # referencia para BE/trailing
+                "tp":         tp_final,
                 "units":      units,
                 "risk_usd":   risk_usd,
+                "slippage_pips": round(slippage / pip_unit, 1),
                 "be_activado": False,  # True cuando SL ya movido a entry
                 "opened_at":  datetime.now(timezone.utc).isoformat(),
             }
@@ -601,8 +684,22 @@ class RiskExecutionAgent:
             logger.info(
                 f"ORDEN OANDA | {PARES_DISPLAY.get(par, par)} "
                 f"{senal['dir'].upper()} | {abs(units)} @ {fill_price:.5f} | "
-                f"SL={sl:.5f} TP={tp:.5f} | ID={trade_id}"
+                f"SL={sl_final:.5f} TP={tp_final:.5f} | ID={trade_id}"
             )
+
+            # ── Si hubo ajuste por slippage, actualizar SL/TP en OANDA ─────────
+            # La orden ya se envió con valores pre-fill. Si el fill fue diferente,
+            # mandamos TradeCRCDO para corregir SL y TP en OANDA.
+            if slippage > pip_unit * 0.5 and oanda_id != "?":
+                try:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None,
+                        lambda: self._actualizar_sl_tp_oanda(
+                            oanda_id, sl_final, tp_final, decimals
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"[FillAdj] No se pudo actualizar SL/TP en OANDA: {e}")
 
             # Notificar Telegram
             if self._audit:
@@ -612,6 +709,12 @@ class RiskExecutionAgent:
 
         except Exception as e:
             logger.error(f"Error ejecutando orden {par}: {e}")
+            if self._audit:  # fase2f: los errores de ejecución llegan a Telegram
+                try:
+                    await self._audit.notificar_error(
+                        f"Error ejecutando orden {par}", str(e))
+                except Exception:
+                    pass
             return None
 
     @retry(
@@ -694,6 +797,33 @@ class RiskExecutionAgent:
             logger.error(f"Error modificando SL OANDA (ID={oanda_id}): {e}")
             return False
 
+    def _actualizar_sl_tp_oanda(self, oanda_id: str, sl: float, tp: float, decimals: int) -> bool:
+        """
+        Actualiza SL y TP de un trade ya abierto via TradeCRCDO.
+        Usado tras fill con slippage para anclar SL/TP al precio real de ejecución.
+        """
+        try:
+            body = {
+                "stopLoss": {
+                    "price": str(round(sl, decimals)),
+                    "timeInForce": "GTC",
+                },
+                "takeProfit": {
+                    "price": str(round(tp, decimals)),
+                    "timeInForce": "GTC",
+                },
+            }
+            r = oanda_trades.TradeCRCDO(OANDA_ACCOUNT, oanda_id, data=body)
+            self._oanda.request(r)
+            logger.info(f"[FillAdj] SL/TP corregidos en OANDA | ID={oanda_id} SL={round(sl, decimals)} TP={round(tp, decimals)}")
+            return True
+        except V20Error as e:
+            logger.error(f"[FillAdj] TradeCRCDO error (ID={oanda_id}): {e}")
+            return False
+        except Exception as e:
+            logger.error(f"[FillAdj] Error actualizando SL/TP (ID={oanda_id}): {e}")
+            return False
+
     def _gestionar_be_trailing(self, abiertas_oanda: dict):
         """
         Break-even automatico + trailing stop.
@@ -719,6 +849,21 @@ class RiskExecutionAgent:
             sl_dist   = abs(entry - sl_orig)
 
             if sl_dist == 0:
+                continue
+
+            # Break-even solo para estrategias de TENDENCIA.
+            # Reversión confirmada (Engulfing+RSI_Divergence) y reversión pura
+            # (RSI_Bollinger, Hammer, Doji) NO usan BE: el precio oscila y el
+            # BE-SL se activa prematuramente, destruyendo el R esperado.
+            # Control por estrategia: per_strategy.<nombre>.apply_be
+            # (default True solo para Engulfing y EMA_Crossover).
+            BE_DEFAULT = {"Engulfing": True, "EMA_Crossover": True}
+            estrategia = info.get("estrategia", "Engulfing")
+            per_strat = self._params.get("per_strategy", {})
+            apply_be = per_strat.get(estrategia, {}).get(
+                "apply_be", BE_DEFAULT.get(estrategia, False)
+            )
+            if not apply_be:
                 continue
 
             precio = self._obtener_precio_actual(par)
@@ -908,6 +1053,7 @@ class RiskExecutionAgent:
                 self._capital += pnl
                 if self._capital > self._peak:
                     self._peak = self._capital
+                self._reset_dd_dia_si_cambio_dia()
                 self._dd_dia += min(pnl, 0)
 
                 # Registrar en historial rolling para circuit breaker
@@ -1073,7 +1219,18 @@ class RiskExecutionAgent:
 
         return True
 
+    def _reset_dd_dia_si_cambio_dia(self) -> None:
+        """Fase2d: el drawdown "diario" nunca se reseteaba — una vez alcanzado el
+        umbral, el bot dejaba de operar hasta reiniciar el servicio. Ahora se
+        resetea al cambiar el día UTC."""
+        hoy = datetime.now(timezone.utc).date()
+        if hoy != self._dd_dia_fecha:
+            logger.info(f"Nuevo día UTC: reseteando drawdown diario (${self._dd_dia:.2f} → $0.00)")
+            self._dd_dia = 0.0
+            self._dd_dia_fecha = hoy
+
     def _validar_drawdown(self) -> bool:
+        self._reset_dd_dia_si_cambio_dia()
         max_dd = self._params.get("max_drawdown_dia", 0.03)
         if self._dd_dia <= -(self._capital * max_dd):
             logger.warning(f"Drawdown diario alcanzado: ${self._dd_dia:.2f}")
@@ -1087,8 +1244,19 @@ class RiskExecutionAgent:
             return False
         return True
 
-    def _validar_max_pos_par(self, par: str) -> bool:
-        """Evita abrir más de max_pos_par posiciones en el mismo par simultáneamente."""
+    def _validar_max_pos_par(self, par: str, direccion: str = None) -> bool:
+        """Evita abrir más de max_pos_par posiciones en el mismo par simultáneamente.
+        Además bloquea abrir una segunda posición en la misma dirección en el mismo par."""
+        # Bloqueo de dirección duplicada: nunca dos LONGs o dos SHORTs en el mismo par
+        if direccion:
+            dir_duplicada = any(
+                info.get("par") == par and info.get("dir", "").lower() == direccion.lower()
+                for info in self._pos_abiertas.values()
+            )
+            if dir_duplicada:
+                logger.debug(f"Dirección duplicada bloqueada: ya hay {direccion.upper()} abierto en {par}")
+                return False
+
         max_pp = self._params.get("max_pos_par", 2)
         abiertas_en_par = sum(
             1 for info in self._pos_abiertas.values()
@@ -1219,6 +1387,16 @@ class RiskExecutionAgent:
             "cb_umbral":        cb_pct,
             "cb_margen":        round(max(cb_pct - dd_rolling, 0), 4),
         }
+
+    def reload_params(self, new_params: dict) -> None:
+        """Hot-reload: aplica nuevos parametros sin reinicio (llamado por ParamsWatcher)."""
+        self._params = new_params
+        logger.info(
+            f"RiskExecutionAgent reload_params: "
+            f"riesgo_pct={new_params.get('riesgo_pct')} | "
+            f"max_pos={new_params.get('max_posiciones')} | "
+            f"cb_pct={new_params.get('circuit_breaker_pct')}"
+        )
 
     def stop(self):
         self._running = False

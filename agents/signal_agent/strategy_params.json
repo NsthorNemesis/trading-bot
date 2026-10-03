@@ -1,0 +1,63 @@
+{
+  "_comentario": "v16_all_strategies — 6 estrategias activas con implementaciones corregidas | 2026-05-29",
+  "signal_timeframe": "M15",
+  "estrategias_activas": [
+    "EMA_Crossover",
+    "Engulfing",
+    "RSI_Bollinger",
+    "RSI_Divergence",
+    "Hammer",
+    "Doji"
+  ],
+  "estrategias_pausadas": [],
+  "pares_activos": [
+    "EUR_USD",
+    "GBP_USD",
+    "USD_CHF",
+    "USD_JPY",
+    "USD_CAD",
+    "AUD_USD"
+  ],
+  "pares_pausados": [
+    "NZD_USD"
+  ],
+  "sesiones_activas": [
+    "london",
+    "overlap"
+  ],
+  "sesiones_pausadas": [
+    "new_york",
+    "asia"
+  ],
+  "cooldown_minutes": 15,
+  "min_confidence": 0.72,
+  "rr_ratio": 2.0,
+  "sl_atr_mult": 1.5,
+  "riesgo_pct": 0.005,
+  "min_sl_pips": 10,
+  "max_sl_pips": 30,
+  "max_posiciones": 6,
+  "max_pos_par": 3,
+  "max_drawdown_dia": 0.05,
+  "circuit_breaker_pct": 0.1,
+  "min_win_rate": 0.35,
+  "rsi_low": 30,
+  "rsi_high": 70,
+  "rsi_hammer_max": 45,
+  "prev_bearish_min": 2,
+  "adx_max_rsi_bollinger": 25,
+  "adx_max_hammer": 30,
+  "hammer_min_body_pct": 0.05,
+  "hammer_m15_confirm": false,
+  "m1_entry_refinement": false,
+  "m1_entry_timeout_min": 3,
+  "max_trade_hours": 12,
+  "min_pips_to_hold": 3,
+  "max_consecutive_losses": 3,
+  "consecutive_loss_pause_hours": 24,
+  "calibrado_por": "strategies_v16_bugs_fixed",
+  "adx_min_operar": 27,
+  "filtro_h4_activo": true,
+  "calibrado_en": "2026-05-29",
+  "_notas_v16": "Todas las estrategias activas. Bugs corregidos en strategies.py"
+}

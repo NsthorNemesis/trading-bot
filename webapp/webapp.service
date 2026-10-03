@@ -1,0 +1,23 @@
+[Unit]
+Description=Trading Bot v11 — Webapp (Telegram Mini App backend)
+After=network.target trading_bot.service
+Requires=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/trading_bot_v11
+EnvironmentFile=/root/trading_bot_v11/.env
+ExecStart=/root/trading_bot_v11/venv/bin/uvicorn webapp.main:app \
+    --host 0.0.0.0 \
+    --port 8080 \
+    --workers 1 \
+    --log-level info \
+    --access-log
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/trading_bot_v11/logs/webapp.log
+StandardError=append:/root/trading_bot_v11/logs/webapp.log
+
+[Install]
+WantedBy=multi-user.target
