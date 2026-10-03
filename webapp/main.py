@@ -25,6 +25,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,23 +50,44 @@ STATIC_DIR  = Path(__file__).parent / "static"
 OANDA_TOKEN      = os.getenv("OANDA_ACCESS_TOKEN", "")
 OANDA_ENV        = os.getenv("OANDA_ENVIRONMENT", "practice")
 BOT_TOKEN        = os.getenv("TELEGRAM_BOT_TOKEN", "")[:20]
-WEBAPP_PASSWORD  = os.getenv("WEBAPP_PASSWORD", "trading2024")  # cambiar en .env
-_SECRET_KEY      = os.getenv("TELEGRAM_BOT_TOKEN", "webapp-secret")  # clave HMAC
+WEBAPP_PASSWORD  = os.getenv("WEBAPP_PASSWORD", "")
+if not WEBAPP_PASSWORD:
+    raise RuntimeError("WEBAPP_PASSWORD no configurado en .env — el webapp no arranca sin contraseña")
 
-def _make_token(password: str) -> str:
-    """Genera un token determinístico a partir de la contraseña. Sin estado en servidor."""
-    return hmac.new(
-        _SECRET_KEY.encode(),
-        password.encode(),
-        hashlib.sha256,
-    ).hexdigest()
+# ── Sesiones (fase 2i): tokens únicos con expiración, no más token estático ──
+_SESSIONS: dict[str, float] = {}  # token -> timestamp de expiración
+_SESSION_TTL = 24 * 3600  # 24 horas
 
-_VALID_TOKEN = _make_token(WEBAPP_PASSWORD)
+def _crear_sesion() -> str:
+    """Genera un token de sesión único con expiración."""
+    _limpiar_sesiones()
+    token = secrets.token_urlsafe(32)
+    _SESSIONS[token] = time.time() + _SESSION_TTL
+    return token
+
+def _limpiar_sesiones() -> None:
+    """Elimina sesiones expiradas."""
+    ahora = time.time()
+    for tok in [t for t, exp in _SESSIONS.items() if exp < ahora]:
+        del _SESSIONS[tok]
 
 def _check_token(request: Request) -> bool:
-    """Verifica el token en header X-Session-Token."""
+    """Verifica el token en header X-Session-Token contra sesiones activas."""
     token = request.headers.get("X-Session-Token", "")
-    return hmac.compare_digest(token, _VALID_TOKEN)
+    if not token:
+        return False
+    exp = _SESSIONS.get(token)
+    if exp is None:
+        return False
+    if exp < time.time():
+        del _SESSIONS[token]
+        return False
+    return True
+
+def _invalidar_sesion(request: Request) -> bool:
+    """Cierra la sesión del token actual."""
+    token = request.headers.get("X-Session-Token", "")
+    return _SESSIONS.pop(token, None) is not None
 
 logger = logging.getLogger("webapp")
 
@@ -74,7 +96,7 @@ app = FastAPI(title="Trading Bot v11 Mini App", docs_url=None, redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://nsthor.duckdns.org"],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -250,7 +272,7 @@ async def _startup():
 @app.post("/api/auth")
 async def auth(request: Request):
     """
-    Verifica la contraseña y retorna un token de sesión.
+    Verifica la contraseña y retorna un token de sesión único (24h).
     Body: {"password": "..."}
     El token se guarda en localStorage y se envía en X-Session-Token en cada request.
     """
@@ -258,7 +280,14 @@ async def auth(request: Request):
     password = body.get("password", "")
     if not password or not hmac.compare_digest(password, WEBAPP_PASSWORD):
         raise HTTPException(status_code=401, detail="Contraseña incorrecta")
-    return {"token": _VALID_TOKEN, "ok": True}
+    return {"token": _crear_sesion(), "ok": True}
+
+
+@app.post("/api/logout")
+async def logout(request: Request):
+    """Invalida la sesión actual."""
+    _invalidar_sesion(request)
+    return {"ok": True}
 
 
 @app.get("/api/ping")
