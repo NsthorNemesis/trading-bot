@@ -184,7 +184,9 @@ class SignalAgent:
             if adx_val < adx_min:
                 logger.info(f"[ADX] {par} ADX={adx_val:.1f} < {adx_min:.0f} — skip")
                 return None
-            if self._params.get("filtro_h4_activo", False) and h4_tendencia != "rango":
+            if self._params.get("filtro_h4_activo", False):
+                if h4_tendencia == "rango":
+                    return None  # sin tendencia H4 → no operar (lógica previa)
                 alineado = (
                     (h4_tendencia == "up"   and patron.dir_hint == "long") or
                     (h4_tendencia == "down" and patron.dir_hint == "short")

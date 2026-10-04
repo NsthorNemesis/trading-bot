@@ -2,14 +2,14 @@
  "_comentario": "v20_M15_revert — revertido a M15 estable 2026-06-05",
  "signal_timeframe": "M15",
  "estrategias_activas": [
-  "Engulfing",
-  "Engulfing+RSI_Divergence",
   "EMA_Crossover"
  ],
  "estrategias_pausadas": [
   "Hammer",
   "Doji",
-  "RSI_Bollinger"
+  "RSI_Bollinger",
+  "Engulfing",
+  "Engulfing+RSI_Divergence"
  ],
  "pares_activos": [
   "EUR_USD",
@@ -46,7 +46,7 @@
  "min_confidence": 0.72,
  "rr_ratio": 2.0,
  "sl_atr_mult": 1.5,
- "riesgo_pct": 0.01,
+ "riesgo_pct": 0.02,
  "min_sl_pips": 20,
  "max_sl_pips": 60,
  "max_posiciones": 6,
