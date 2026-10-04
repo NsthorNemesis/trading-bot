@@ -2668,9 +2668,9 @@ async function loadCandles() {
     safeSet(bbLowerSeries, ind.bb_lower || []);
     safeSet(rsiSeries,     ind.rsi      || []);
 
-    // Vista inicial: ultima semana de velas al cambiar par/TF (el resto sigue disponible con scroll)
+    // Vista inicial: ultimo dia de velas al cambiar par/TF (el resto sigue disponible con scroll)
     const _viewKey = currentPair + '|' + currentTf;
-    const tfWeek = { M1: 5000, M5: 1440, M15: 480, H1: 120, H4: 30, D1: 5 };
+    const tfWeek = { M1: 1440, M5: 288, M15: 96, H1: 24, H4: 6, D1: 30 };
     if (window._lastChartView !== _viewKey) {
       window._lastChartView = _viewKey;
       const weekN = Math.min(_candleStore.length, tfWeek[currentTf] || 480);
