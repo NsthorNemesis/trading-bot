@@ -1,4 +1,11 @@
 """
+⚠️  HISTÓRICO — NO USAR COMO REFERENCIA DE LA CONFIGURACIÓN ACTUAL
+Este backtest es de la arquitectura original v11.0.0 (mayo 2026) con parámetros
+hardcodeados de esa época (Doji/Hammer activos). La configuración viva está en
+strategy_params.json y el motor actual en agents/signal_agent/.
+Se conserva solo como referencia histórica.
+"""
+"""
 backtest_v11.py — Backtest autónomo para trading_bot v11
 ═══════════════════════════════════════════════════════════════════
 100% self-contained — no importa nada del bot principal.
