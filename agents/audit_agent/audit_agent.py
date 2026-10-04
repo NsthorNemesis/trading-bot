@@ -527,7 +527,7 @@ class AuditAgent:
         import os, time
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-        webapp_url = os.getenv("WEBAPP_URL", "http://24.199.87.217:8080")
+        webapp_url = os.getenv("WEBAPP_URL", "https://nsthor.duckdns.org")
         # Timestamp para bypass de caché — igual que /reload
         url_fresh  = f"{webapp_url}?v={int(time.time())}"
 
@@ -550,7 +550,7 @@ class AuditAgent:
         import os, time
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
-        webapp_url = os.getenv("WEBAPP_URL", "http://24.199.87.217:8080")
+        webapp_url = os.getenv("WEBAPP_URL", "https://nsthor.duckdns.org")
         # Agregar timestamp para que Telegram trate la URL como nueva y no use caché
         url_fresh = f"{webapp_url}?v={int(time.time())}"
 
