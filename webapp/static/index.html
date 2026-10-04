@@ -2668,7 +2668,18 @@ async function loadCandles() {
     safeSet(bbLowerSeries, ind.bb_lower || []);
     safeSet(rsiSeries,     ind.rsi      || []);
 
-    chart.timeScale().fitContent();
+    // Vista inicial: ultima semana de velas al cambiar par/TF (el resto sigue disponible con scroll)
+    const _viewKey = currentPair + '|' + currentTf;
+    const tfWeek = { M1: 5000, M5: 1440, M15: 480, H1: 120, H4: 30, D1: 5 };
+    if (window._lastChartView !== _viewKey) {
+      window._lastChartView = _viewKey;
+      const weekN = Math.min(_candleStore.length, tfWeek[currentTf] || 480);
+      if (_candleStore.length > weekN && weekN > 10) {
+        chart.timeScale().setVisibleLogicalRange({ from: _candleStore.length - weekN, to: _candleStore.length });
+      } else {
+        chart.timeScale().fitContent();
+      }
+    }
     applyIndicatorVisibility(currentStrat);
     applyTradeMarkers(currentPair);
 
