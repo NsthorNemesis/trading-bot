@@ -1290,6 +1290,27 @@ class AuditAgent:
             schedule.run_pending()
             await asyncio.sleep(60)
 
+    async def _preparar_apertura(self):
+        """Dom 20:00 UTC: resumen de parámetros antes de la reapertura semanal."""
+        p   = self._params
+        msg = (
+            f"🟡 <b>PREPARANDO APERTURA</b>\n"
+            f"Reapertura del mercado en ~2 horas (Dom 22:00 UTC)\n\n"
+            f"Parámetros activos:\n"
+            f"• SL: {p['sl_atr_mult']}×ATR (mín {p['min_sl_pips']} pips)\n"
+            f"• RR: {p['rr_ratio']}\n"
+            f"• Riesgo: {p['riesgo_pct']:.1%}/op\n"
+            f"• Estrategias: {', '.join(p['estrategias_activas'])}"
+        )
+        await self._enviar(msg)
+
+    async def _notificar_apertura(self):
+        """Dom 22:00 UTC: el mercado reabre tras el fin de semana."""
+        await self._enviar(
+            "🟢 <b>MERCADO ABIERTO</b>\n"
+            "Reapertura semanal — sistema operativo (London+Overlap)"
+        )
+
     async def _notificar_estado_si_activo(self):
         """Solo envía estado periódico durante sesión London+Overlap (7-17 UTC)."""
         h = datetime.now(timezone.utc).hour
