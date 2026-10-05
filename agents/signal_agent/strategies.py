@@ -126,13 +126,29 @@ class EstrategiaBase:
             atr      = float(u.get("ATR_14", 0) or 0)
             sl_mult  = float((params or {}).get("sl_atr_mult", 1.5))
             rr       = float((params or {}).get("rr_ratio",   2.0))
+            pip      = 0.01 if "JPY" in par else 0.0001
+            min_sl_d = float((params or {}).get("min_sl_pips", 10)) * pip
 
-            if patron.dir_hint == "long":
-                sl = entry - atr * sl_mult
-                tp = entry + atr * sl_mult * rr
+            sl_nivel = getattr(patron, "sl_nivel", None)
+            if sl_nivel is not None:
+                # Estrategia experimental (bloque 3): el patrón define su SL
+                # como nivel absoluto. Sin enforcement de min_sl_pips y TP
+                # recalculado para mantener el RR (igual que el engine).
+                sl = float(sl_nivel)
+                dist = abs(entry - sl)
+                if patron.dir_hint == "long":
+                    tp = entry + dist * rr
+                elif patron.dir_hint == "short":
+                    tp = entry - dist * rr
+                else:
+                    sl = tp = None
+            elif patron.dir_hint == "long":
+                # Enforcement min_sl_pips (risk_execution_agent.py:341-352)
+                dist = max(atr * sl_mult, min_sl_d)
+                sl, tp = entry - dist, entry + dist * rr
             elif patron.dir_hint == "short":
-                sl = entry + atr * sl_mult
-                tp = entry - atr * sl_mult * rr
+                dist = max(atr * sl_mult, min_sl_d)
+                sl, tp = entry + dist, entry - dist * rr
             else:
                 sl = tp = None
 

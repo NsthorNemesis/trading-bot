@@ -35,6 +35,22 @@ sys.path.insert(0, str(_ROOT))
 from config.settings import PARAMS
 from agents.signal_agent.strategies import TODAS_LAS_ESTRATEGIAS, PatronDetectado
 
+# Estrategias experimentales shadow-only (bloque 3, aprobado por Néstor).
+# Import AFTER strategies: sin circularidad posible (experimental importa
+# las clases base de strategies, ya totalmente inicializado aquí).
+# Si falla, el live sigue con las 6 de siempre.
+try:
+    from agents.signal_agent.experimental_strategies import REGISTRO_EXPERIMENTAL
+    _EXP_REGISTRO = REGISTRO_EXPERIMENTAL
+except Exception as _exc:  # noqa: BLE001
+    _EXP_REGISTRO = {}
+    _EXP_IMPORT_ERROR = str(_exc)
+
+# Estrategias experimentales shadow-only (bloque 3). En _detectar_patrones
+# reciben un df extendido (500 velas); el resto conserva el df original.
+_EXP_NOMBRES = frozenset({"DoubleBottom", "LondonBreakout",
+                         "PrevDayBreakout", "InsideBar"})
+
 logger = logging.getLogger("signal_agent")
 
 
@@ -51,7 +67,12 @@ class SignalAgent:
         self._detection_cooldown: dict = {}
 
         self._suscriptores_senal: list = []
-        self._estrategias = TODAS_LAS_ESTRATEGIAS
+        self._estrategias = list(TODAS_LAS_ESTRATEGIAS)
+        # Experimentales shadow-only: van en estrategias_pausadas →
+        # solo log_shadow(), nunca operan.
+        for _nombre, _cls in _EXP_REGISTRO.items():
+            if _nombre not in {e.nombre for e in self._estrategias}:
+                self._estrategias.append(_cls())
 
         logger.info(
             f"SignalAgent v16 (patrón puro) | "
@@ -280,13 +301,22 @@ class SignalAgent:
         if len(df) < 10:
             return patrones_activos
 
+        df_exp = None  # df extendido, solo para experimentales
         for estrategia in self._estrategias:
             params_est = {**self._params, "_par_actual": par}
             if estrategia.nombre in per_strat_cfg:
                 params_est.update(per_strat_cfg[estrategia.nombre])
 
+            df_uso = df
+            if estrategia.nombre in _EXP_NOMBRES:
+                if df_exp is None:
+                    df_exp = self._market.get_df_m15(par, n=500)
+                if df_exp is None or len(df_exp) < 60:
+                    continue
+                df_uso = df_exp
+
             try:
-                patron = estrategia.detectar(df, params_est)
+                patron = estrategia.detectar(df_uso, params_est)
             except Exception as exc:
                 logger.debug(f"[{estrategia.nombre}] error en detectar: {exc}")
                 continue
@@ -302,7 +332,7 @@ class SignalAgent:
                 )
             elif estrategia.nombre in pausadas:
                 estrategia.log_shadow(
-                    par=par, patron=patron, df=df,
+                    par=par, patron=patron, df=df_uso,
                     h4_tendencia=h4_tendencia, params=self._params,
                 )
 
