@@ -164,6 +164,10 @@ class EstrategiaBase:
                 "tp":          round(tp, 5) if tp is not None else None,
                 "h4":          h4_tendencia,
                 "resultado":   None,
+                # Feature vector (2026-10-06): snapshot de indicadores al
+                # momento de la señal — alimenta el futuro dataset del modelo
+                # especializado. Todos los campos anteriores se mantienen.
+                "features":    self._feature_vector(u, h4_tendencia),
             }
             with SHADOW_LOG.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record) + "\n")
@@ -173,6 +177,48 @@ class EstrategiaBase:
             )
         except Exception as exc:
             logger.debug(f"[Shadow] error al registrar: {exc}")
+
+    @staticmethod
+    def _feature_vector(u, h4_tendencia: str = "rango") -> dict:
+        """Vector de features al momento de la señal (2026-10-06).
+        `u` es la última vela del DataFrame con indicadores del market agent.
+        Pensado para el futuro dataset del modelo especializado."""
+        def _f(col, nd=5):
+            try:
+                return round(float(u.get(col, 0) or 0), nd)
+            except (TypeError, ValueError):
+                return 0.0
+
+        close   = _f("Close")
+        bb_low  = _f("BB_LOW")
+        bb_high = _f("BB_HIGH")
+        bb_pos  = ((close - bb_low) / (bb_high - bb_low)
+                   if bb_high > bb_low else 0.5)
+
+        hora_utc = datetime.now(timezone.utc).hour
+        if 7 <= hora_utc < 13:
+            sesion = "london"
+        elif 13 <= hora_utc < 17:
+            sesion = "overlap"
+        elif 17 <= hora_utc < 22:
+            sesion = "new_york"
+        else:
+            sesion = "asia"
+
+        return {
+            "ema_9":     _f("EMA_9"),
+            "ema_20":    _f("EMA_20"),
+            "ema_50":    _f("EMA_50"),
+            "adx_14":    _f("ADX_14", 2),
+            "rsi_14":    _f("RSI_14", 2),
+            "macd":      _f("MACD"),
+            "macd_sig":  _f("MACD_SIG"),
+            "macd_hist": _f("MACD_DIF"),
+            "bb_pos":    round(bb_pos, 4),
+            "atr_14":    _f("ATR_14"),
+            "h4":        h4_tendencia,
+            "sesion":    sesion,
+        }
 
 
 # ── 1. EMA Crossover ──────────────────────────────────────────────────────────

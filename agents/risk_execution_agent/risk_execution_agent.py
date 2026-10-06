@@ -92,6 +92,10 @@ class RiskExecutionAgent:
         # trade en ciclos sucesivos mientras OANDA procesa el cierre.
         self._stale_closing: set = set()
 
+        # Fix fugas capital (2026-10-06): reconciliaciones de startup cuyo PnL
+        # no se pudo obtener (API falló) — se reintentan en _verificar_cierres
+        self._reconciliacion_pendiente: list = []  # [(oanda_id, par)]
+
         # Clientes
         self._oanda = oandapyV20.API(
             access_token = OANDA_TOKEN,
@@ -267,11 +271,30 @@ class RiskExecutionAgent:
 
             # Ya no está abierto — obtener PnL del historial de OANDA
             pnl = self._obtener_pnl_cierre(par, oanda_id)
+            if pnl is None:
+                # Fix fugas capital (2026-10-06): API falló — no marcar cerrado
+                # con PnL=0 silencioso. Queda pendiente para reintentar en
+                # _verificar_cierres (próximos ciclos).
+                logger.warning(
+                    f"Reconciliación: {par} ID={oanda_id} — PnL no disponible, "
+                    "se reintentará en próximos ciclos"
+                )
+                self._reconciliacion_pendiente.append((oanda_id, par))
+                continue
             self._actualizar_trade_cerrado(oanda_id, pnl)
+            # Fix fugas capital (2026-10-06): estos cierres también tocan el
+            # capital interno (antes nunca lo hacían)
+            self._capital += pnl
+            if self._capital > self._peak:
+                self._peak = self._capital
+            self._reset_dd_dia_si_cambio_dia()
+            self._dd_dia += min(pnl, 0)
+            self._registrar_capital()
+            self._persistir_capital()
             resultado = "GANADORA" if pnl > 0 else "PERDEDORA"
             logger.info(
                 f"Reconciliación: {par} ID={oanda_id} cerrado | "
-                f"PnL=${pnl:+.4f} | {resultado}"
+                f"PnL=${pnl:+.4f} | {resultado} | Capital=${self._capital:.2f}"
             )
 
     # ── LOOP PRINCIPAL ────────────────────────────────────────────────────────
@@ -1033,6 +1056,26 @@ class RiskExecutionAgent:
             self._gestionar_be_trailing(abiertas_oanda)
             self._gestionar_stale_exit(abiertas_oanda)
 
+            # Fix fugas capital (2026-10-06): reintentar PnL de reconciliaciones
+            # de startup que quedaron pendientes por fallo de API
+            for oanda_id, par in list(self._reconciliacion_pendiente):
+                pnl = self._obtener_pnl_cierre(par, oanda_id)
+                if pnl is None:
+                    continue  # sigue pendiente — próximo ciclo
+                self._actualizar_trade_cerrado(oanda_id, pnl)
+                self._capital += pnl
+                if self._capital > self._peak:
+                    self._peak = self._capital
+                self._reset_dd_dia_si_cambio_dia()
+                self._dd_dia += min(pnl, 0)
+                self._registrar_capital()
+                self._persistir_capital()
+                self._reconciliacion_pendiente.remove((oanda_id, par))
+                logger.info(
+                    f"Reconciliación pendiente resuelta: {par} ID={oanda_id} | "
+                    f"PnL=${pnl:+.4f} | Capital=${self._capital:.2f}"
+                )
+
             cerradas = [
                 (tid, info)
                 for tid, info in list(self._pos_abiertas.items())
@@ -1045,6 +1088,24 @@ class RiskExecutionAgent:
 
                 # Obtener PnL real del cierre
                 pnl = self._obtener_pnl_cierre(par, oanda_id)
+                if pnl is None:
+                    # Fix fugas capital (2026-10-06): nunca PnL=0 silencioso.
+                    # El trade queda pendiente y se reintenta en el próximo ciclo.
+                    logger.warning(
+                        f"CIERRE {par} ID={oanda_id}: PnL no disponible tras "
+                        "3 intentos — reintento en el próximo ciclo"
+                    )
+                    if self._audit and self._loop:
+                        asyncio.run_coroutine_threadsafe(
+                            self._audit.notificar_error(
+                                f"No se pudo obtener el PnL de {par} "
+                                f"(ID {oanda_id}) tras 3 intentos. "
+                                "Se reintentará automáticamente.",
+                                "cierre_sin_pnl",
+                            ),
+                            self._loop,
+                        )
+                    continue
 
                 # Bug 1 fix: persistir cierre en trades.json
                 self._actualizar_trade_cerrado(oanda_id, pnl)
@@ -1058,6 +1119,10 @@ class RiskExecutionAgent:
 
                 # Registrar en historial rolling para circuit breaker
                 self._registrar_capital()
+
+                # Fix fugas capital (2026-10-06): persistir en cada cierre,
+                # no solo en shutdown (un crash perdía todo lo no guardado)
+                self._persistir_capital()
 
                 # Actualizar contador de pérdidas consecutivas
                 self._registrar_resultado_trade(par, pnl)
@@ -1088,19 +1153,31 @@ class RiskExecutionAgent:
         except Exception as e:
             logger.error(f"Error verificando cierres: {e}")
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=5))
-    def _obtener_pnl_cierre(self, par: str, oanda_id: str) -> float:
-        """Obtiene el PnL real de una posición cerrada."""
-        try:
-            params = {"state": "CLOSED", "instrument": par}
-            r2     = oanda_trades.TradesList(OANDA_ACCOUNT, params=params)
-            self._oanda.request(r2)
-            for t in r2.response.get("trades", []):
-                if t["id"] == oanda_id:
-                    return float(t.get("realizedPL", 0))
-        except Exception:
-            pass
-        return 0.0
+    def _obtener_pnl_cierre(self, par: str, oanda_id: str) -> Optional[float]:
+        """Obtiene el PnL real de una posición cerrada.
+        Devuelve None si la API falla tras 3 intentos — el llamador debe
+        reintentar en el próximo ciclo y alertar (nunca PnL=0 silencioso).
+        Fix fugas capital (2026-10-06)."""
+        for intento in range(3):
+            try:
+                params = {"state": "CLOSED", "instrument": par}
+                r2     = oanda_trades.TradesList(OANDA_ACCOUNT, params=params)
+                self._oanda.request(r2)
+                for t in r2.response.get("trades", []):
+                    if t["id"] == oanda_id:
+                        return float(t.get("realizedPL", 0))
+                return 0.0  # API OK pero el trade no está en el historial
+            except Exception as e:
+                logger.warning(
+                    f"PnL cierre {par} ID={oanda_id}: "
+                    f"intento {intento + 1}/3 falló: {e}"
+                )
+                time.sleep(2 ** intento)
+        logger.error(
+            f"PnL cierre {par} ID={oanda_id}: API falló 3 veces — "
+            "se reintentará en el próximo ciclo"
+        )
+        return None
 
     # ── VALIDACIONES ──────────────────────────────────────────────────────────
 
@@ -1358,6 +1435,28 @@ class RiskExecutionAgent:
             TRADES_LOG.write_text(json.dumps(trades, indent=2, default=str))
         except Exception as e:
             logger.error(f"Error actualizando cierre trade {oanda_id}: {e}")
+
+    def _persistir_capital(self) -> None:
+        """Fix fugas capital (2026-10-06): persiste capital_state.json en cada
+        cierre de trade, no solo en shutdown limpio (un crash perdía todo lo
+        no guardado desde el último apagón). Mismo formato que main.py."""
+        try:
+            state_path = (
+                Path(__file__).parent.parent.parent / "data" / "capital_state.json"
+            )
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "capital":     round(self._capital, 4),
+                        "actualizado": datetime.now(timezone.utc).isoformat(),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning(f"No se pudo persistir capital_state.json: {e}")
 
     def snapshot(self) -> dict:
         """Estado actual del agente para el AuditAgent."""
