@@ -69,7 +69,7 @@ class AuditAgent:
             return
 
         try:
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             from telegram.ext import (
                 Application, CommandHandler,
                 MessageHandler, CallbackQueryHandler,
@@ -441,86 +441,6 @@ class AuditAgent:
         except Exception as exc:
             await update.message.reply_text(f"❌ Error al reanudar: {exc}")
 
-    async def _cmd_setparam(self, update, context):
-        """/setparam <campo> <valor> — cambia un parámetro numérico o de lista en tiempo real.
-
-        Ejemplos:
-          /setparam min_confidence 0.72
-          /setparam riesgo_pct 0.005
-          /setparam adx_min_operar 27
-          /setparam cooldown_minutes 15
-          /setparam max_posiciones 6
-
-        El cambio se escribe en strategy_params.json y el ParamsWatcher lo propaga
-        a todos los agentes en ≤30 segundos sin reiniciar el bot.
-        """
-        # Campos numéricos permitidos (whitelist de seguridad)
-        CAMPOS_FLOAT = {
-            "min_confidence", "riesgo_pct", "rr_ratio", "sl_atr_mult",
-            "min_win_rate", "max_drawdown_dia", "circuit_breaker_pct",
-        }
-        CAMPOS_INT = {
-            "adx_min_operar", "cooldown_minutes", "max_posiciones", "max_pos_par",
-            "min_sl_pips", "max_sl_pips", "max_trade_hours", "max_consecutive_losses",
-            "m1_entry_timeout_min", "min_pips_to_hold",
-        }
-
-        args = context.args if context.args else []
-        if len(args) != 2:
-            await update.message.reply_text(
-                "⚠️ Uso: /setparam <campo> <valor>\n"
-                "Ejemplo: /setparam min_confidence 0.72\n\n"
-                f"Campos numéricos: {', '.join(sorted(CAMPOS_FLOAT | CAMPOS_INT))}"
-            )
-            return
-
-        campo, valor_str = args[0], args[1]
-        if campo not in CAMPOS_FLOAT and campo not in CAMPOS_INT:
-            await update.message.reply_text(
-                f"❌ Campo '{campo}' no permitido o no es numérico.\n"
-                f"Campos disponibles: {', '.join(sorted(CAMPOS_FLOAT | CAMPOS_INT))}"
-            )
-            return
-
-        try:
-            valor = float(valor_str) if campo in CAMPOS_FLOAT else int(valor_str)
-        except ValueError:
-            await update.message.reply_text(f"❌ Valor '{valor_str}' no es un número válido.")
-            return
-
-        # Validaciones básicas
-        if campo == "min_confidence" and not (0.5 <= valor <= 1.0):
-            await update.message.reply_text("❌ min_confidence debe estar entre 0.50 y 1.00")
-            return
-        if campo == "riesgo_pct" and not (0 < valor <= 0.02):
-            await update.message.reply_text("❌ riesgo_pct debe estar entre 0.001 y 0.02")
-            return
-
-        # Leer → modificar → escribir → informar
-        try:
-            with open(PARAMS_FILE, encoding="utf-8") as f:
-                params = json.load(f)
-
-            valor_anterior = params.get(campo, "N/A")
-            params[campo] = valor
-
-            with open(PARAMS_FILE, "w", encoding="utf-8") as f:
-                json.dump(params, f, ensure_ascii=False, indent=2)
-
-            # Actualizar params local del AuditAgent también
-            self._params[campo] = valor
-
-            logger.info(f"[Telegram /setparam] {campo}: {valor_anterior} → {valor}")
-            await update.message.reply_text(
-                f"✅ <b>{campo}</b> actualizado\n"
-                f"  Antes : {valor_anterior}\n"
-                f"  Ahora : {valor}\n\n"
-                f"⏱ ParamsWatcher aplicará el cambio a todos los agentes en ≤30 seg.",
-                parse_mode="HTML"
-            )
-        except Exception as exc:
-            logger.error(f"[Telegram /setparam] Error: {exc}")
-            await update.message.reply_text(f"❌ Error al guardar: {exc}")
 
     async def _cmd_grafica(self, update, context):
         """/ grafica — abre la Mini App siempre con versión actualizada."""

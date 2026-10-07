@@ -149,15 +149,6 @@ class MarketAgent:
             logger.debug(f"[H1] {par} error resampleando M15→H1: {e}")
             return None
 
-    def get_df_h4(self, par: str, n: int = 50) -> Optional[pd.DataFrame]:
-        """DataFrame H4 con indicadores — para confirmación de tendencia."""
-        if par not in self._buffer_h4:
-            return None
-        buf = list(self._buffer_h4[par])
-        if len(buf) < 10:
-            return None
-        df = self._buf_to_df(buf[-min(n, len(buf)):])
-        return self._calcular_indicadores(df)
 
     def tendencia_h4(self, par: str) -> str:
         """
@@ -242,8 +233,6 @@ class MarketAgent:
 
     # ── Utilidades ────────────────────────────────────────────────────────────
 
-    def get_precio(self, par: str) -> float:
-        return self._ultimo_precio.get(par, 0.0)
 
     def datos_frescos(self, par: str) -> bool:
         """Verifica que los datos M15 (no M1) sean recientes.
@@ -257,18 +246,6 @@ class MarketAgent:
     def sesion_actual(self) -> str:
         return self._sesion(datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
 
-    def get_edad_ultima_vela(self, par: str) -> float:
-        """Edad de la última vela M1 (buffer de streaming)."""
-        buf = list(self._buffer.get(par, []))
-        if not buf:
-            return 9999
-        try:
-            ts = datetime.fromisoformat(
-                buf[-1]["timestamp"].replace("Z", "+00:00")
-            ).replace(tzinfo=None)
-            return (datetime.utcnow() - ts).total_seconds()
-        except Exception:
-            return 9999
 
     def get_edad_ultima_vela_m15(self, par: str) -> float:
         """Edad de la última vela M15 — la que usan las estrategias."""
@@ -291,15 +268,9 @@ class MarketAgent:
         """True si hay suficientes velas M15 para generar señales."""
         return len(self._buffer_m15.get(par, [])) >= VELAS_MIN_M15
 
-    # Alias de compatibilidad
-    def h1_disponible(self, par: str) -> bool:
-        return self.m15_disponible(par)
 
-    def suscribir(self, cb: Callable):
-        self._suscriptores.append(cb)
 
     # ── Loop principal ────────────────────────────────────────────────────────
-
     async def run(self):
         self._running = True
         await self._precargar_historico()

@@ -20,7 +20,6 @@ Arrancar: uvicorn webapp.main:app --host 0.0.0.0 --port 8080 --workers 1
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import hmac
 import json
 import logging
@@ -694,7 +693,6 @@ async def get_system(request: Request):
         ts_str = r.stdout.strip().replace("ActiveEnterTimestamp=", "")
         if ts_str:
             from datetime import datetime, timezone
-            import locale
             # Parse systemd timestamp (e.g. "Mon 2026-06-01 03:07:41 UTC")
             try:
                 started = datetime.strptime(ts_str, "%a %Y-%m-%d %H:%M:%S %Z").replace(tzinfo=timezone.utc)

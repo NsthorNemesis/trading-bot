@@ -56,9 +56,6 @@ class PatronExperimental(PatronDetectado):
 _ULTIMO_DIA_SENAL: dict = {}
 
 
-def reset_estado_experimental() -> None:
-    """Limpia el estado (paridad con el harness; en live se usa tras reinicios)."""
-    _ULTIMO_DIA_SENAL.clear()
 
 
 def _marca_dia(nombre: str, par: str, fecha) -> bool:

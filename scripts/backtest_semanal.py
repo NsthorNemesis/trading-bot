@@ -3,7 +3,7 @@ backtest_semanal.py — Corre backtest_26w_v3.py y sube el resultado al VPS.
 Diseñado para ejecutarse automáticamente cada domingo.
 Uso manual: python scripts/backtest_semanal.py
 """
-import json, subprocess, sys, pathlib, datetime, shutil
+import json, subprocess, sys, pathlib, datetime
 
 ROOT    = pathlib.Path(__file__).parent.parent
 RESULT  = ROOT / "data" / "backtesting" / "backtest_semanal.json"
