@@ -1,5 +1,5 @@
 {
-  "_comentario": "v16_all_strategies — 6 estrategias activas con implementaciones corregidas | 2026-05-29",
+  "_comentario": "v16_all_strategies \u2014 6 estrategias activas con implementaciones corregidas | 2026-05-29",
   "signal_timeframe": "M15",
   "estrategias_activas": [
     "EMA_Crossover",
@@ -9,7 +9,9 @@
     "Hammer",
     "Doji"
   ],
-  "estrategias_pausadas": [],
+  "estrategias_pausadas": [
+    "EMA_OverlapKronos"
+  ],
   "pares_activos": [
     "EUR_USD",
     "GBP_USD",
@@ -54,5 +56,10 @@
   "adx_min_operar": 27,
   "filtro_h4_activo": true,
   "calibrado_en": "2026-05-29",
-  "_notas_v16": "Todas las estrategias activas. Bugs corregidos en strategies.py"
+  "_notas_v16": "Todas las estrategias activas. Bugs corregidos en strategies.py",
+  "per_strategy": {
+    "EMA_OverlapKronos": {
+      "adx_min_operar": 22
+    }
+  }
 }

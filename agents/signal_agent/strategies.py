@@ -289,6 +289,47 @@ RECHAZAR si: el precio ya regresó al nivel del cruce, o el ADX está bajando, o
         return None
 
 
+# ── 1b. EMA Overlap + Kronos (shadow-only) ────────────────────────────────────
+class EstrategiaEMAOverlapKronos(EstrategiaBase):
+    """
+    Shadow de la configuración ganadora Familia 4 (solo-Overlap, GBP_USD/USD_JPY)
+    + filtro de volatilidad Kronos (K2-vol, Fase 0 pasada en 5y el 2026-10-10).
+
+    - Replica la detección de EMA_Crossover pero SOLO en sesión overlap
+      (13:00-17:00 UTC) y en los 2 pares, sin tocar sesiones_activas global
+      (el live sigue con su configuración).
+    - El veto de Kronos se aplica OFFLINE en la máquina de backtest
+      (el VPS no corre torch): esta estrategia registra TODAS las señales
+      EMA-overlap en shadow_signals.jsonl; el veto se evalúa fuera de línea
+      con el umbral p75 calibrado en el backtest 5y.
+    - adx_min_operar=22 vía per_strategy (valor del backtest campeón).
+    """
+    nombre                 = "EMA_OverlapKronos"
+    tipo                   = "trend"
+    min_confidence_default = 0.75
+    PARES                  = ("GBP_USD", "USD_JPY")
+    criterios_decision     = (
+        "Shadow: configuración ganadora Familia 4 (EMA, overlap, 2 pares) "
+        "con veto de volatilidad Kronos aplicado offline."
+    )
+
+    def detectar(self, df, params: dict):
+        par = params.get("_par_actual", "")
+        if par not in self.PARES:
+            return None
+        h = datetime.now(timezone.utc).hour
+        if not (13 <= h < 17):
+            return None
+        patron = EstrategiaEMACrossover().detectar(df, params)
+        if patron is None:
+            return None
+        return PatronDetectado(
+            nombre      = self.nombre,
+            dir_hint    = patron.dir_hint,
+            descripcion = f"[Kronos-shadow] {patron.descripcion}",
+        )
+
+
 # ── 2. Engulfing ──────────────────────────────────────────────────────────────
 
 class EstrategiaEngulfing(EstrategiaBase):
@@ -827,4 +868,5 @@ TODAS_LAS_ESTRATEGIAS: list[EstrategiaBase] = [
     EstrategiaEMACrossover(),       # ⏸ shadow
     EstrategiaHammer(),             # ⏸ shadow
     EstrategiaDoji(),               # ⏸ shadow
+    EstrategiaEMAOverlapKronos(),   # 🆕 shadow: ganadora F4 + veto Kronos offline
 ]
